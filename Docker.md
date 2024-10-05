@@ -54,7 +54,7 @@ This guide will walk you through the process of setting up and running the Binan
    To run the container, use the following command:
 
    ```
-   docker run binance-transactions python /app/src/get_binance_transactions.py db_name=your_db_name stats_collection=your_stats_collection big_transactions_collection=your_big_transactions_collection pairs=PAIR1,PAIR2,PAIR3
+   docker run --name binance-transactions binance-transactions python /app/src/get_binance_transactions.py db_name=your_db_name stats_collection=your_stats_collection big_transactions_collection=your_big_transactions_collection pairs=PAIR1,PAIR2,PAIR3
    ```
 
    Replace `your_db_name`, `your_stats_collection`, `your_big_transactions_collection`, and `PAIR1,PAIR2,PAIR3` with your desired values.
@@ -62,13 +62,13 @@ This guide will walk you through the process of setting up and running the Binan
    For example:
 
    ```
-   docker run binance-transactions python /app/src/get_binance_transactions.py db_name=test stats_collection=test_stats big_transactions_collection=test_big_transactions pairs=1000SATSUSDT,1INCHUSDT,ACAUSDT
+   docker run --name binance-transactions binance-transactions python /app/src/get_binance_transactions.py db_name=test stats_collection=test_stats big_transactions_collection=test_big_transactions pairs=1000SATSUSDT,1INCHUSDT,ACAUSDT
    ```
 
 5. **Running with Host Network** (if needed)
    If your application needs to connect to services running on your host machine (like a local MongoDB instance), use the `--network host` option:
    ```
-   docker run --network host binance-transactions python /app/src/service/get_binance_transactions.py db_name=test stats_collection=test_stats big_transactions_collection=test_big_transactions pairs=1000SATSUSDT,1INCHUSDT,ACAUSDT
+   docker run --name binance-transactions --network host binance-transactions python /app/src/service/get_binance_transactions.py db_name=test stats_collection=test_stats big_transactions_collection=test_big_transactions pairs=1000SATSUSDT,1INCHUSDT,ACAUSDT
    ```
 
 ## Troubleshooting
