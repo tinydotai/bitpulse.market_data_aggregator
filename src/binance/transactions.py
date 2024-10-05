@@ -2,15 +2,13 @@ import asyncio
 import websockets
 import json
 import os
-import logging
+from service.logger import get_logger  
 from datetime import datetime, timezone
 from service.async_mongo import AsyncMongoDBHelper
 from bson import CodecOptions
 from prometheus_client import start_http_server, Counter, Gauge
 
-# Set up basic logging configuration
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('BinanceWebSocket')
+logger = get_logger('BinanceWebSocket')
 
 # Prometheus metrics
 TRANSACTIONS_TOTAL = Counter('binance_transactions_total', 'Total number of transactions', ['symbol', 'side'])
