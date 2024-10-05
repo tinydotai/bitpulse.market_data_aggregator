@@ -2,21 +2,21 @@ import asyncio
 import websockets
 import json
 import os
+import logging
 from datetime import datetime, timezone
-from .pairs import usdt_pairs
 from service.async_mongo import AsyncMongoDBHelper
-from service.logger import get_logger
 from bson import CodecOptions
 from prometheus_client import start_http_server, Counter, Gauge
 
-logger = get_logger('BinanceWebSocket')
+# Set up basic logging configuration
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('BinanceWebSocket')
 
 # Prometheus metrics
 TRANSACTIONS_TOTAL = Counter('binance_transactions_total', 'Total number of transactions', ['symbol', 'side'])
 TRANSACTION_VALUE = Counter('binance_transaction_value_total', 'Total value of transactions', ['symbol', 'side'])
 PRICE_GAUGE = Gauge('binance_price', 'Current price', ['symbol'])
 BIG_TRANSACTIONS = Counter('binance_big_transactions_total', 'Number of big transactions', ['symbol', 'side'])
-
 
 class BinanceWebSocket:
     def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, stats_collection, big_transactions_collection, output_dir='binance_data'):
@@ -48,13 +48,25 @@ class BinanceWebSocket:
 
         while retry_count < self.max_retries:
             try:
+                logger.info(f"Attempting to connect to Binance WebSocket: {ws_url}")
                 async with websockets.connect(ws_url) as websocket:
+                    logger.info("Successfully connected to Binance WebSocket")
+                    
                     subscribe_msg = {
                         "method": "SUBSCRIBE",
                         "params": stream_names,
                         "id": 1
                     }
                     await websocket.send(json.dumps(subscribe_msg))
+                    logger.info(f"Sent subscription request for {len(stream_names)} pairs")
+
+                    # Wait for subscription confirmation
+                    subscription_response = await websocket.recv()
+                    subscription_data = json.loads(subscription_response)
+                    if subscription_data.get('result') is None:
+                        logger.info(f"Successfully subscribed to all streams: {stream_names}")
+                    else:
+                        logger.warning(f"Unexpected subscription response: {subscription_data}")
 
                     retry_count = 0  # Reset retry count on successful connection
                     retry_delay = self.initial_retry_delay  # Reset retry delay
@@ -65,8 +77,10 @@ class BinanceWebSocket:
                             transaction = json.loads(response)
                             await self.handle_message(transaction)
                         except asyncio.TimeoutError:
+                            logger.debug("No data received in 30 seconds, sending ping")
                             pong_waiter = await websocket.ping()
                             await asyncio.wait_for(pong_waiter, timeout=10)
+                            logger.debug("Received pong, connection still alive")
                         except json.JSONDecodeError as e:
                             logger.error(f"JSON decode error: {e}. Response: {response}")
                         except Exception as e:
@@ -83,6 +97,7 @@ class BinanceWebSocket:
                     logger.error("Max retries reached. Exiting.")
                     return
 
+                logger.info(f"Retrying in {retry_delay} seconds...")
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, self.max_retry_delay)  # Exponential backoff
 
@@ -131,6 +146,8 @@ class BinanceWebSocket:
                         'timestamp': transaction_time
                     })
 
+                logger.debug(f"Processed {trade_side} transaction for {symbol}: price={price}, quantity={quantity}")
+
         except KeyError as e:
             logger.error(f"KeyError in handle_message: {e}. Message: {message}")
         except Exception as e:
@@ -139,6 +156,8 @@ class BinanceWebSocket:
     async def process_and_store_data(self):
         try:
             timestamp = self.current_interval.replace(tzinfo=timezone.utc)
+            logger.info("-"*50)
+            logger.info(f"Processing data for interval: {timestamp}")
 
             documents = []
             big_transaction_documents = []
@@ -162,6 +181,7 @@ class BinanceWebSocket:
                             f"{side}_max_price": max(trade['price'] for trade in trades),
                             f"{side}_avg_price": total_value / total_quantity
                         })
+                        logger.debug(f"{symbol} {side}: {len(trades)} trades, total value: {total_value}")
                     else:
                         output_data.update({
                             f"{side}_count": 0,
@@ -171,6 +191,7 @@ class BinanceWebSocket:
                             f"{side}_max_price": None,
                             f"{side}_avg_price": None
                         })
+                        logger.debug(f"{symbol} {side}: No trades")
 
                 documents.append(output_data)
 
@@ -186,17 +207,32 @@ class BinanceWebSocket:
                             "quantity": trade['quantity'],
                             "value": trade['value']
                         })
+                    logger.debug(f"{symbol} big {side} transactions: {len(big_trades[side])}")
+
 
             # Insert regular transactions
             self.mongo_helper.set_collection(self.stats_collection)
-            await self.bulk_insert(documents)
+            regular_insert_result = await self.bulk_insert(documents)
+            if regular_insert_result:
+                logger.info(f"Successfully inserted {len(documents)} documents into {self.stats_collection}")
+            else:
+                logger.warning(f"No result returned from bulk insert into {self.stats_collection}")
 
             # Insert big transactions
             if big_transaction_documents:
-                await self.bulk_insert_big_transactions(big_transaction_documents)
+                big_insert_result = await self.bulk_insert_big_transactions(big_transaction_documents)
+                if big_insert_result:
+                    logger.info(f"Successfully inserted {len(big_transaction_documents)} big transaction documents into {self.big_transactions_collection}")
+                else:
+                    logger.warning(f"No result returned from bulk insert into {self.big_transactions_collection}")
+            else:
+                logger.info("No big transactions to insert")
 
+            logger.info("Data processing and storage completed successfully")
         except Exception as e:
-            logger.error(f"Error in process_and_store_data: {e}")
+            logger.error(f"Error in process_and_store_data: {e}", exc_info=True)
+        finally:
+            logger.info("-"*50)
 
     async def bulk_insert(self, documents):
         try:
@@ -244,6 +280,7 @@ async def main(db_name, stats_collection, big_transactions_collection, pairs):
 
         binance_ws = BinanceWebSocket(pairs, mongo_helper, stats_collection, big_transactions_collection, output_dir='binance_data/transactions')
         
+        logger.info("Starting Binance WebSocket connection")
         await binance_ws.connect()
     except Exception as e:
         logger.error(f"Fatal error in main: {e}")
