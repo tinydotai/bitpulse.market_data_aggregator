@@ -1,13 +1,22 @@
-import os
-import json
 import asyncio
 import websockets
-from bson import CodecOptions
+import json
+import os
 from datetime import datetime, timezone
-from service.logger import get_logger
+from .pairs import usdt_pairs
 from service.async_mongo import AsyncMongoDBHelper
+from service.logger import get_logger
+from bson import CodecOptions
+from prometheus_client import start_http_server, Counter, Gauge
 
 logger = get_logger('BinanceWebSocket')
+
+# Prometheus metrics
+TRANSACTIONS_TOTAL = Counter('binance_transactions_total', 'Total number of transactions', ['symbol', 'side'])
+TRANSACTION_VALUE = Counter('binance_transaction_value_total', 'Total value of transactions', ['symbol', 'side'])
+PRICE_GAUGE = Gauge('binance_price', 'Current price', ['symbol'])
+BIG_TRANSACTIONS = Counter('binance_big_transactions_total', 'Number of big transactions', ['symbol', 'side'])
+
 
 class BinanceWebSocket:
     def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, output_dir='binance_data'):
@@ -23,6 +32,7 @@ class BinanceWebSocket:
         self.initial_retry_delay = 5
         self.max_retry_delay = 300  # 5 minutes
         self.BIG_TRANSACTION_THRESHOLD = 10000  # $10,000 threshold for big transactions
+        start_http_server(8000)  # Prometheus will scrape metrics from this port
 
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -108,8 +118,14 @@ class BinanceWebSocket:
 
                 self.transactions[symbol][trade_side].append({'price': price, 'quantity': quantity})
 
+                # Update Prometheus metrics
+                TRANSACTIONS_TOTAL.labels(symbol=symbol, side=trade_side).inc()
+                TRANSACTION_VALUE.labels(symbol=symbol, side=trade_side).inc(transaction_value)
+                PRICE_GAUGE.labels(symbol=symbol).set(price)
+
                 # Check if it's a big transaction
                 if transaction_value >= self.BIG_TRANSACTION_THRESHOLD:
+                    BIG_TRANSACTIONS.labels(symbol=symbol, side=trade_side).inc()
                     self.big_transactions[symbol][trade_side].append({
                         'price': price,
                         'quantity': quantity,
@@ -174,7 +190,7 @@ class BinanceWebSocket:
                         })
 
             # Insert regular transactions
-            self.mongo_helper.set_collection("binance_test")
+            # self.mongo_helper.set_collection("binance_test")
             await self.bulk_insert(documents)
 
             # Insert big transactions

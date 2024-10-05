@@ -3,7 +3,7 @@ from binance.transactions import main
 from binance.pairs import usdt_pairs
 
 DB_NAME = "testing"
-COLLECTION_NAME = "test_binance"
+COLLECTION_NAME = "TEST_BINANCE"
 
 
 if __name__ == "__main__":
