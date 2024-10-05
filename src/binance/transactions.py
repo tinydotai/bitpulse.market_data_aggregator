@@ -1,12 +1,11 @@
+import os
+import json
 import asyncio
 import websockets
-import json
-import os
-from datetime import datetime, timezone
-from .pairs import usdt_pairs
-from service.async_mongo import AsyncMongoDBHelper
-from service.logger import get_logger
 from bson import CodecOptions
+from datetime import datetime, timezone
+from service.logger import get_logger
+from service.async_mongo import AsyncMongoDBHelper
 
 logger = get_logger('BinanceWebSocket')
 
@@ -220,17 +219,16 @@ class BinanceWebSocket:
             await self.process_and_store_data()
         # Add any other cleanup code here
 
-async def main():
+async def main(db_name, collection_name, pairs):
     try:
-        pairs = usdt_pairs[:50]
-        mongo_helper = AsyncMongoDBHelper("bitpulse")
+        mongo_helper = AsyncMongoDBHelper(db_name)
 
         # Set codec options to use timezone-aware datetimes
         codec_options = CodecOptions(tz_aware=True, tzinfo=timezone.utc)
         mongo_helper.set_codec_options(codec_options)
         
         # Set the main collection
-        mongo_helper.set_collection("binance_test")
+        mongo_helper.set_collection(collection_name)
 
         binance_ws = BinanceWebSocket(pairs, mongo_helper, output_dir='binance_data/transactions')
         
