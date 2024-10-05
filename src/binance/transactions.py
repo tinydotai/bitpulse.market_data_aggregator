@@ -19,7 +19,7 @@ BIG_TRANSACTIONS = Counter('binance_big_transactions_total', 'Number of big tran
 
 
 class BinanceWebSocket:
-    def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, output_dir='binance_data'):
+    def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, stats_collection, big_transactions_collection, output_dir='binance_data'):
         self.pairs = pairs
         self.base_url = "wss://stream.binance.com:9443/ws"
         self.output_dir = output_dir
@@ -32,6 +32,8 @@ class BinanceWebSocket:
         self.initial_retry_delay = 5
         self.max_retry_delay = 300  # 5 minutes
         self.BIG_TRANSACTION_THRESHOLD = 10000  # $10,000 threshold for big transactions
+        self.stats_collection = stats_collection
+        self.big_transactions_collection = big_transactions_collection 
         start_http_server(8000)  # Prometheus will scrape metrics from this port
 
         if not os.path.exists(output_dir):
@@ -190,7 +192,7 @@ class BinanceWebSocket:
                         })
 
             # Insert regular transactions
-            # self.mongo_helper.set_collection("binance_test")
+            self.mongo_helper.set_collection(self.stats_collection)
             await self.bulk_insert(documents)
 
             # Insert big transactions
@@ -216,7 +218,7 @@ class BinanceWebSocket:
 
     async def bulk_insert_big_transactions(self, documents):
         try:
-            self.mongo_helper.set_collection('big_transactions')
+            self.mongo_helper.set_collection(self.big_transactions_collection)
             result = await self.mongo_helper.insert_many(documents)
             logger.info(f"Bulk inserted {len(documents)} big transactions into MongoDB")
             return result
@@ -235,7 +237,7 @@ class BinanceWebSocket:
             await self.process_and_store_data()
         # Add any other cleanup code here
 
-async def main(db_name, collection_name, pairs):
+async def main(db_name, stats_collection, big_transactions_collection, pairs):
     try:
         mongo_helper = AsyncMongoDBHelper(db_name)
 
@@ -244,9 +246,9 @@ async def main(db_name, collection_name, pairs):
         mongo_helper.set_codec_options(codec_options)
         
         # Set the main collection
-        mongo_helper.set_collection(collection_name)
+        mongo_helper.set_collection(stats_collection)
 
-        binance_ws = BinanceWebSocket(pairs, mongo_helper, output_dir='binance_data/transactions')
+        binance_ws = BinanceWebSocket(pairs, mongo_helper, stats_collection, big_transactions_collection, output_dir='binance_data/transactions')
         
         await binance_ws.connect()
     except Exception as e:
