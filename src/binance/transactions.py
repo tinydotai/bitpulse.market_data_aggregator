@@ -19,10 +19,9 @@ PRICE_GAUGE = Gauge('binance_price', 'Current price', ['symbol'])
 BIG_TRANSACTIONS = Counter('binance_big_transactions_total', 'Number of big transactions', ['symbol', 'side'])
 
 class BinanceWebSocket:
-    def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, stats_collection, big_transactions_collection, output_dir='binance_data'):
+    def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, stats_collection, big_transactions_collection):
         self.pairs = pairs
         self.base_url = "wss://stream.binance.com:9443/ws"
-        self.output_dir = output_dir
         self.transactions = {}
         self.big_transactions = {}
         self.current_interval = None
@@ -35,9 +34,6 @@ class BinanceWebSocket:
         self.stats_collection = stats_collection
         self.big_transactions_collection = big_transactions_collection 
         start_http_server(8000)  # Prometheus will scrape metrics from this port
-
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
 
     async def connect(self):
         stream_names = [f"{pair.lower()}@trade" for pair in self.pairs]
@@ -278,7 +274,7 @@ async def main(db_name, stats_collection, big_transactions_collection, pairs):
         # Set the main collection
         mongo_helper.set_collection(stats_collection)
 
-        binance_ws = BinanceWebSocket(pairs, mongo_helper, stats_collection, big_transactions_collection, output_dir='binance_data/transactions')
+        binance_ws = BinanceWebSocket(pairs, mongo_helper, stats_collection, big_transactions_collection)
         
         logger.info("Starting Binance WebSocket connection")
         await binance_ws.connect()
@@ -289,6 +285,14 @@ async def main(db_name, stats_collection, big_transactions_collection, pairs):
             await binance_ws.close()
         if 'mongo_helper' in locals():
             await mongo_helper.close_connection()
+        logger.info("Binance WebSocket connection closed")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # You should define db_name, stats_collection, big_transactions_collection, and pairs here
+    # or pass them as command-line arguments
+    db_name = "your_db_name"
+    stats_collection = "your_stats_collection"
+    big_transactions_collection = "your_big_transactions_collection"
+    pairs = ["BTCUSDT"]  # Add more pairs as needed
+    
+    asyncio.run(main(db_name, stats_collection, big_transactions_collection, pairs))
