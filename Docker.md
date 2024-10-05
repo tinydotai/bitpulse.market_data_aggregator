@@ -54,7 +54,7 @@ This guide will walk you through the process of setting up and running the Binan
    To run the container, use the following command:
 
    ```
-   docker run --name binance-transactions -v $(pwd)/logs:/app/logs binance-transactions python /app/src/get_binance_transactions.py db_name=your_db_name stats_collection=your_stats_collection big_transactions_collection=your_big_transactions_collection pairs=PAIR1,PAIR2,PAIR3
+   docker run --name binance-transactions -v $(pwd)/logs:/app/logs binance-transactions python /app/src/get_binance_transactions.py db_name=your_db_name stats_collection=your_stats_collection big_transactions_collection=your_big_transactions_collection pairs=BTCUSDT,ETHUSDT,SOLUSDT
    ```
 
    Replace `your_db_name`, `your_stats_collection`, `your_big_transactions_collection`, and `PAIR1,PAIR2,PAIR3` with your desired values.
