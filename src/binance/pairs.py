@@ -354,3 +354,12 @@ usdt_pairs = [
     "ZROUSDT",
     "ZRXUSDT"
 ]
+
+
+if __name__ == "__main__":
+    pairs_str = ""
+    for pair in usdt_pairs:
+        pairs_str += pair + ","
+    
+    pairs_str = pairs_str[:-1]
+    print(pairs_str)
