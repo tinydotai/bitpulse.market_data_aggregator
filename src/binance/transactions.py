@@ -30,7 +30,7 @@ class BinanceWebSocket:
         self.mongo_helper = mongo_helper
         self.max_retries = 10
         self.initial_retry_delay = 5
-        self.max_retry_delay = 300  # 5 minutes
+        self.max_retry_delay = 60  # 1 minute
         self.BIG_TRANSACTION_THRESHOLD = 10000  # $10,000 threshold for big transactions
         self.stats_collection = stats_collection
         self.big_transactions_collection = big_transactions_collection 
@@ -49,8 +49,6 @@ class BinanceWebSocket:
         while retry_count < self.max_retries:
             try:
                 async with websockets.connect(ws_url) as websocket:
-                    logger.info(f"Connected to Binance WebSocket for {len(self.pairs)} pairs")
-                    logger.info(self.pairs)
                     subscribe_msg = {
                         "method": "SUBSCRIBE",
                         "params": stream_names,
@@ -67,7 +65,6 @@ class BinanceWebSocket:
                             transaction = json.loads(response)
                             await self.handle_message(transaction)
                         except asyncio.TimeoutError:
-                            logger.warning("WebSocket receive timeout. Sending ping.")
                             pong_waiter = await websocket.ping()
                             await asyncio.wait_for(pong_waiter, timeout=10)
                         except json.JSONDecodeError as e:
@@ -83,18 +80,17 @@ class BinanceWebSocket:
                 logger.error(f"WebSocket error (attempt {retry_count}/{self.max_retries}): {e}")
 
                 if retry_count >= self.max_retries:
-                    logger.critical("Max retries reached. Exiting.")
+                    logger.error("Max retries reached. Exiting.")
                     return
 
-                logger.info(f"Attempting to reconnect in {retry_delay} seconds...")
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, self.max_retry_delay)  # Exponential backoff
 
             except Exception as e:
-                logger.critical(f"Unexpected error in WebSocket connection: {e}")
+                logger.error(f"Unexpected error in WebSocket connection: {e}")
                 return
 
-        logger.critical("Failed to establish a stable connection. Exiting.")
+        logger.error("Failed to establish a stable connection. Exiting.")
 
     async def handle_message(self, message):
         try:
@@ -205,7 +201,6 @@ class BinanceWebSocket:
     async def bulk_insert(self, documents):
         try:
             result = await self.mongo_helper.insert_many(documents)
-            logger.info(f"Bulk inserted {len(documents)} documents into MongoDB")
             return result
         except Exception as e:
             logger.error(f"Error bulk inserting data into MongoDB: {e}")
@@ -220,7 +215,6 @@ class BinanceWebSocket:
         try:
             self.mongo_helper.set_collection(self.big_transactions_collection)
             result = await self.mongo_helper.insert_many(documents)
-            logger.info(f"Bulk inserted {len(documents)} big transactions into MongoDB")
             return result
         except Exception as e:
             logger.error(f"Error bulk inserting big transactions into MongoDB: {e}")
@@ -252,9 +246,8 @@ async def main(db_name, stats_collection, big_transactions_collection, pairs):
         
         await binance_ws.connect()
     except Exception as e:
-        logger.critical(f"Fatal error in main: {e}")
+        logger.error(f"Fatal error in main: {e}")
     finally:
-        logger.info("Shutting down...")
         if 'binance_ws' in locals():
             await binance_ws.close()
         if 'mongo_helper' in locals():
