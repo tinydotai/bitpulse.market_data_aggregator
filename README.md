@@ -4,6 +4,8 @@ sudo docker run -v /home/luka/binance_data:/app/binance_data -v /home/luka/logs:
 
 off-chain data aggregator
 
+# Monitoring all USDT,BTC,ETH pairs on Binance
+
 # Binance WebSocket Transactions System
 
 This system collects real-time trade data from Binance using WebSocket connections and stores aggregated data in MongoDB. Here's an overview of how it works:
