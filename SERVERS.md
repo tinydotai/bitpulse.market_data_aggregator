@@ -1,3 +1,5 @@
+~150 MB of logs are produced every day on the servers
+
 ## Data Server 1
 
 52.194.188.177

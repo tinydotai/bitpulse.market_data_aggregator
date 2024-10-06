@@ -203,7 +203,6 @@ class BinanceWebSocket:
                             "value": trade['value'],
                             "source": "binance"
                         })
-                    logger.debug(f"{symbol} big {side} transactions: {len(big_trades[side])}")
 
 
             # Insert regular transactions
