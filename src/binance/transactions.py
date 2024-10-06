@@ -173,7 +173,8 @@ class BinanceWebSocket:
                             f"{side}_total_value": total_value,
                             f"{side}_min_price": min(trade['price'] for trade in trades),
                             f"{side}_max_price": max(trade['price'] for trade in trades),
-                            f"{side}_avg_price": total_value / total_quantity
+                            f"{side}_avg_price": total_value / total_quantity,
+                            "source": "binance"
                         })
                         logger.debug(f"{symbol} {side}: {len(trades)} trades, total value: {total_value}")
                     else:
@@ -183,7 +184,8 @@ class BinanceWebSocket:
                             f"{side}_total_value": 0,
                             f"{side}_min_price": None,
                             f"{side}_max_price": None,
-                            f"{side}_avg_price": None
+                            f"{side}_avg_price": None,
+                            "source": "binance"
                         })
                         logger.debug(f"{symbol} {side}: No trades")
 
@@ -199,7 +201,8 @@ class BinanceWebSocket:
                             "side": side,
                             "price": trade['price'],
                             "quantity": trade['quantity'],
-                            "value": trade['value']
+                            "value": trade['value'],
+                            "source": "binance"
                         })
                     logger.debug(f"{symbol} big {side} transactions: {len(big_trades[side])}")
 
