@@ -140,7 +140,6 @@ class BinanceWebSocket:
                         'timestamp': transaction_time
                     })
 
-                logger.debug(f"Processed {trade_side} transaction for {symbol}: price={price}, quantity={quantity}")
 
         except KeyError as e:
             logger.error(f"KeyError in handle_message: {e}. Message: {message}")
