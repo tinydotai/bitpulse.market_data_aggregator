@@ -357,9 +357,10 @@ usdt_pairs = [
 
 
 if __name__ == "__main__":
-    pairs_str = ""
-    for pair in usdt_pairs:
-        pairs_str += pair + ","
+    print(len(usdt_pairs))
+    # pairs_str = ""
+    # for pair in usdt_pairs[300:]:
+    #     pairs_str += pair + ","
     
-    pairs_str = pairs_str[:-1]
-    print(pairs_str)
+    # pairs_str = pairs_str[:-1]
+    # print(pairs_str)
