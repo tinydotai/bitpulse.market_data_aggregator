@@ -110,6 +110,10 @@ class BinanceWebSocket:
                 timestamp = int(message['T'])
                 is_buyer_maker = message['m']
 
+                # Extract base and quote currencies
+                base_currency = symbol[:-4]  # Assuming USDT pairs, adjust if needed
+                quote_currency = symbol[-4:]
+
                 trade_side = "sell" if is_buyer_maker else "buy"
                 transaction_value = price * quantity
 
@@ -123,7 +127,12 @@ class BinanceWebSocket:
                     self.transactions = {pair: {'buy': [], 'sell': []} for pair in self.pairs}
                     self.big_transactions = {pair: {'buy': [], 'sell': []} for pair in self.pairs}
 
-                self.transactions[symbol][trade_side].append({'price': price, 'quantity': quantity})
+                self.transactions[symbol][trade_side].append({
+                    'price': price,
+                    'quantity': quantity,
+                    'baseCurrency': base_currency,
+                    'quoteCurrency': quote_currency
+                })
 
                 # Update Prometheus metrics
                 TRANSACTIONS_TOTAL.labels(symbol=symbol, side=trade_side).inc()
@@ -137,9 +146,10 @@ class BinanceWebSocket:
                         'price': price,
                         'quantity': quantity,
                         'value': transaction_value,
-                        'timestamp': transaction_time
+                        'timestamp': transaction_time,
+                        'baseCurrency': base_currency,
+                        'quoteCurrency': quote_currency
                     })
-
 
         except KeyError as e:
             logger.error(f"KeyError in handle_message: {e}. Message: {message}")
@@ -173,7 +183,9 @@ class BinanceWebSocket:
                             f"{side}_min_price": min(trade['price'] for trade in trades),
                             f"{side}_max_price": max(trade['price'] for trade in trades),
                             f"{side}_avg_price": total_value / total_quantity,
-                            "source": "binance"
+                            "source": "binance",
+                            "baseCurrency": trades[0]['baseCurrency'],
+                            "quoteCurrency": trades[0]['quoteCurrency']
                         })
                         logger.debug(f"{symbol} {side}: {len(trades)} trades, total value: {total_value}")
                     else:
@@ -184,7 +196,9 @@ class BinanceWebSocket:
                             f"{side}_min_price": None,
                             f"{side}_max_price": None,
                             f"{side}_avg_price": None,
-                            "source": "binance"
+                            "source": "binance",
+                            "baseCurrency": symbol[:-4],  # Assuming USDT pairs, adjust if needed
+                            "quoteCurrency": symbol[-4:]
                         })
                         logger.debug(f"{symbol} {side}: No trades")
 
@@ -201,9 +215,10 @@ class BinanceWebSocket:
                             "price": trade['price'],
                             "quantity": trade['quantity'],
                             "value": trade['value'],
-                            "source": "binance"
+                            "source": "binance",
+                            "baseCurrency": trade['baseCurrency'],
+                            "quoteCurrency": trade['quoteCurrency']
                         })
-
 
             # Insert regular transactions
             self.mongo_helper.set_collection(self.stats_collection)
