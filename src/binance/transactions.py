@@ -2,13 +2,10 @@ import asyncio
 import websockets
 import json
 import os
-from service.logger import get_logger  
 from datetime import datetime, timezone
 from service.async_mongo import AsyncMongoDBHelper
 from bson import CodecOptions
 from prometheus_client import start_http_server, Counter, Gauge
-
-logger = get_logger('BinanceWebSocket')
 
 # Prometheus metrics
 TRANSACTIONS_TOTAL = Counter('binance_transactions_total', 'Total number of transactions', ['symbol', 'side'])
@@ -42,9 +39,9 @@ class BinanceWebSocket:
 
         while retry_count < self.max_retries:
             try:
-                logger.info(f"Attempting to connect to Binance WebSocket: {ws_url}")
+                print(f"Attempting to connect to Binance WebSocket: {ws_url}")
                 async with websockets.connect(ws_url) as websocket:
-                    logger.info("Successfully connected to Binance WebSocket")
+                    print("Successfully connected to Binance WebSocket")
                     
                     subscribe_msg = {
                         "method": "SUBSCRIBE",
@@ -52,15 +49,15 @@ class BinanceWebSocket:
                         "id": 1
                     }
                     await websocket.send(json.dumps(subscribe_msg))
-                    logger.info(f"Sent subscription request for {len(stream_names)} pairs")
+                    print(f"Sent subscription request for {len(stream_names)} pairs")
 
                     # Wait for subscription confirmation
                     subscription_response = await websocket.recv()
                     subscription_data = json.loads(subscription_response)
                     if subscription_data.get('result') is None:
-                        logger.info(f"Successfully subscribed to all streams: {stream_names}")
+                        print(f"Successfully subscribed to all streams: {stream_names}")
                     else:
-                        logger.warning(f"Unexpected subscription response: {subscription_data}")
+                        print(f"Unexpected subscription response: {subscription_data}")
 
                     retry_count = 0  # Reset retry count on successful connection
                     retry_delay = self.initial_retry_delay  # Reset retry delay
@@ -71,35 +68,35 @@ class BinanceWebSocket:
                             transaction = json.loads(response)
                             await self.handle_message(transaction)
                         except asyncio.TimeoutError:
-                            logger.debug("No data received in 30 seconds, sending ping")
+                            print("No data received in 30 seconds, sending ping")
                             pong_waiter = await websocket.ping()
                             await asyncio.wait_for(pong_waiter, timeout=10)
-                            logger.debug("Received pong, connection still alive")
+                            print("Received pong, connection still alive")
                         except json.JSONDecodeError as e:
-                            logger.error(f"JSON decode error: {e}. Response: {response}")
+                            print(f"JSON decode error: {e}. Response: {response}")
                         except Exception as e:
-                            logger.error(f"Error handling message: {e}")
+                            print(f"Error handling message: {e}")
                             raise  # Re-raise to trigger reconnection
 
             except (websockets.exceptions.ConnectionClosed, 
                     websockets.exceptions.WebSocketException, 
                     asyncio.TimeoutError) as e:
                 retry_count += 1
-                logger.error(f"WebSocket error (attempt {retry_count}/{self.max_retries}): {e}")
+                print(f"WebSocket error (attempt {retry_count}/{self.max_retries}): {e}")
 
                 if retry_count >= self.max_retries:
-                    logger.error("Max retries reached. Exiting.")
+                    print("Max retries reached. Exiting.")
                     return
 
-                logger.info(f"Retrying in {retry_delay} seconds...")
+                print(f"Retrying in {retry_delay} seconds...")
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, self.max_retry_delay)  # Exponential backoff
 
             except Exception as e:
-                logger.error(f"Unexpected error in WebSocket connection: {e}")
+                print(f"Unexpected error in WebSocket connection: {e}")
                 return
 
-        logger.error("Failed to establish a stable connection. Exiting.")
+        print("Failed to establish a stable connection. Exiting.")
 
     async def handle_message(self, message):
         try:
@@ -152,15 +149,15 @@ class BinanceWebSocket:
                     })
 
         except KeyError as e:
-            logger.error(f"KeyError in handle_message: {e}. Message: {message}")
+            print(f"KeyError in handle_message: {e}. Message: {message}")
         except Exception as e:
-            logger.error(f"Unexpected error in handle_message: {e}")
+            print(f"Unexpected error in handle_message: {e}")
 
     async def process_and_store_data(self):
         try:
             timestamp = self.current_interval.replace(tzinfo=timezone.utc)
-            logger.info("-"*50)
-            logger.info(f"Processing data for interval: {timestamp}")
+            print("-"*50)
+            print(f"Processing data for interval: {timestamp}")
 
             documents = []
             big_transaction_documents = []
@@ -187,7 +184,7 @@ class BinanceWebSocket:
                             "baseCurrency": trades[0]['baseCurrency'],
                             "quoteCurrency": trades[0]['quoteCurrency']
                         })
-                        logger.debug(f"{symbol} {side}: {len(trades)} trades, total value: {total_value}")
+                        print(f"{symbol} {side}: {len(trades)} trades, total value: {total_value}")
                     else:
                         output_data.update({
                             f"{side}_count": 0,
@@ -200,7 +197,7 @@ class BinanceWebSocket:
                             "baseCurrency": symbol[:-4],  # Assuming USDT pairs, adjust if needed
                             "quoteCurrency": symbol[-4:]
                         })
-                        logger.debug(f"{symbol} {side}: No trades")
+                        print(f"{symbol} {side}: No trades")
 
                 documents.append(output_data)
 
@@ -224,38 +221,38 @@ class BinanceWebSocket:
             self.mongo_helper.set_collection(self.stats_collection)
             regular_insert_result = await self.bulk_insert(documents)
             if regular_insert_result:
-                logger.info(f"Successfully inserted {len(documents)} documents into {self.stats_collection}")
+                print(f"Successfully inserted {len(documents)} documents into {self.stats_collection}")
             else:
-                logger.warning(f"No result returned from bulk insert into {self.stats_collection}")
+                print(f"No result returned from bulk insert into {self.stats_collection}")
 
             # Insert big transactions
             if big_transaction_documents:
                 big_insert_result = await self.bulk_insert_big_transactions(big_transaction_documents)
                 if big_insert_result:
-                    logger.info(f"Successfully inserted {len(big_transaction_documents)} big transaction documents into {self.big_transactions_collection}")
+                    print(f"Successfully inserted {len(big_transaction_documents)} big transaction documents into {self.big_transactions_collection}")
                 else:
-                    logger.warning(f"No result returned from bulk insert into {self.big_transactions_collection}")
+                    print(f"No result returned from bulk insert into {self.big_transactions_collection}")
             else:
-                logger.info("No big transactions to insert")
+                print("No big transactions to insert")
 
-            logger.info("Data processing and storage completed successfully")
+            print("Data processing and storage completed successfully")
         except Exception as e:
-            logger.error(f"Error in process_and_store_data: {e}", exc_info=True)
+            print(f"Error in process_and_store_data: {e}")
         finally:
-            logger.info("-"*50)
+            print("-"*50)
 
     async def bulk_insert(self, documents):
         try:
             result = await self.mongo_helper.insert_many(documents)
             return result
         except Exception as e:
-            logger.error(f"Error bulk inserting data into MongoDB: {e}")
+            print(f"Error bulk inserting data into MongoDB: {e}")
             # Attempt to insert documents one by one
             for doc in documents:
                 try:
                     await self.mongo_helper.insert_one(doc)
                 except Exception as inner_e:
-                    logger.error(f"Error inserting single document: {inner_e}")
+                    print(f"Error inserting single document: {inner_e}")
 
     async def bulk_insert_big_transactions(self, documents):
         try:
@@ -263,13 +260,13 @@ class BinanceWebSocket:
             result = await self.mongo_helper.insert_many(documents)
             return result
         except Exception as e:
-            logger.error(f"Error bulk inserting big transactions into MongoDB: {e}")
+            print(f"Error bulk inserting big transactions into MongoDB: {e}")
             # Attempt to insert documents one by one
             for doc in documents:
                 try:
                     await self.mongo_helper.insert_one(doc)
                 except Exception as inner_e:
-                    logger.error(f"Error inserting single big transaction document: {inner_e}")
+                    print(f"Error inserting single big transaction document: {inner_e}")
 
     async def close(self):
         # Process any remaining data
@@ -290,16 +287,16 @@ async def main(db_name, stats_collection, big_transactions_collection, pairs):
 
         binance_ws = BinanceWebSocket(pairs, mongo_helper, stats_collection, big_transactions_collection)
         
-        logger.info("Starting Binance WebSocket connection")
+        print("Starting Binance WebSocket connection")
         await binance_ws.connect()
     except Exception as e:
-        logger.error(f"Fatal error in main: {e}")
+        print(f"Fatal error in main: {e}")
     finally:
         if 'binance_ws' in locals():
             await binance_ws.close()
         if 'mongo_helper' in locals():
             await mongo_helper.close_connection()
-        logger.info("Binance WebSocket connection closed")
+        print("Binance WebSocket connection closed")
 
 if __name__ == "__main__":
     # You should define db_name, stats_collection, big_transactions_collection, and pairs here
@@ -310,14 +307,3 @@ if __name__ == "__main__":
     pairs = ["BTCUSDT"]  # Add more pairs as needed
     
     asyncio.run(main(db_name, stats_collection, big_transactions_collection, pairs))
-
-
-
-# sudo docker stop binance-transactions
-# sudo docker rm binance-transactions
-
-# sudo docker rmi l0rtk/bitpulse_binance_transactions:0.1.4
-
-# sudo docker pull l0rtk/bitpulse_binance_transactions:0.2
-
-# docker run --name binance-transactions -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_binance_transactions:0.2 python /app/src/get_binance_transactions.py db_name=bitpulse stats_collection=transactions_stats big_transactions_collection=big_transactions pairs=
