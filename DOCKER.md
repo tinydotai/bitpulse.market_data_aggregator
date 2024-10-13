@@ -60,16 +60,16 @@ This guide will walk you through the process of setting up and running the Binan
    for real
 
    ```
-   docker run --name binance-transactions -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_binance_transactions:0.2 python /app/src/get_binance_transactions.py db_name=bitpulse.v2 stats_collection=transactions_stats big_transactions_collection=big_transactions pairs=BTCUSDT,ETHUSDT,SOLUSDT
+   docker run --name binance-transactions -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_binance_transactions:0.3 python /app/src/get_binance_transactions.py db_name=bitpulse_v2 stats_collection=transactions_stats big_transactions_collection=big_transactions pairs=BTCUSDT,ETHUSDT,SOLUSDT
    ```
 
-   Replace `your_db_name`, `your_stats_collection`, `your_big_transactions_collection`, and `PAIR1,PAIR2,PAIR3` with your desired values.
+Replace `your_db_name`, `your_stats_collection`, `your_big_transactions_collection`, and `PAIR1,PAIR2,PAIR3` with your desired values.
 
-   For example:
+For example:
 
-   ```
-   docker run --name binance-transactions -v $(pwd)/logs:/app/logs  binance-transactions python /app/src/get_binance_transactions.py db_name=test stats_collection=test_stats big_transactions_collection=test_big_transactions pairs=1000SATSUSDT,1INCHUSDT,ACAUSDT
-   ```
+```
+docker run --name binance-transactions -v $(pwd)/logs:/app/logs  binance-transactions python /app/src/get_binance_transactions.py db_name=test stats_collection=test_stats big_transactions_collection=test_big_transactions pairs=1000SATSUSDT,1INCHUSDT,ACAUSDT
+```
 
 5. **Running with Host Network** (if needed)
    If your application needs to connect to services running on your host machine (like a local MongoDB instance), use the `--network host` option:
