@@ -310,3 +310,14 @@ if __name__ == "__main__":
     pairs = ["BTCUSDT"]  # Add more pairs as needed
     
     asyncio.run(main(db_name, stats_collection, big_transactions_collection, pairs))
+
+
+
+# sudo docker stop binance-transactions
+# sudo docker rm binance-transactions
+
+# sudo docker rmi l0rtk/bitpulse_binance_transactions:0.1.4
+
+# sudo docker pull l0rtk/bitpulse_binance_transactions:0.2
+
+# docker run --name binance-transactions -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_binance_transactions:0.2 python /app/src/get_binance_transactions.py db_name=bitpulse stats_collection=transactions_stats big_transactions_collection=big_transactions pairs=

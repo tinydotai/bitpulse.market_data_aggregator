@@ -60,7 +60,7 @@ This guide will walk you through the process of setting up and running the Binan
    for real
 
    ```
-   docker run --name binance-transactions -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_binance_transactions:0.2 python /app/src/get_binance_transactions.py db_name=bitpulse stats_collection=transactions_stats big_transactions_collection=big_transactions pairs=BTCUSDT,ETHUSDT,SOLUSDT
+   docker run --name binance-transactions -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_binance_transactions:0.2 python /app/src/get_binance_transactions.py db_name=bitpulse.v2 stats_collection=transactions_stats big_transactions_collection=big_transactions pairs=BTCUSDT,ETHUSDT,SOLUSDT
    ```
 
    Replace `your_db_name`, `your_stats_collection`, `your_big_transactions_collection`, and `PAIR1,PAIR2,PAIR3` with your desired values.
