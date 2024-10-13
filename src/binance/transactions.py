@@ -166,11 +166,16 @@ class BinanceWebSocket:
                 output_data = {
                     "timestamp": timestamp,
                     "symbol": symbol,
+                    "source": "binance",
+                    "baseCurrency": symbol[:-4],  # Assuming USDT pairs, adjust if needed
+                    "quoteCurrency": symbol[-4:]
                 }
 
+                has_trades = False
                 for side in ['buy', 'sell']:
                     trades = data[side]
                     if trades:
+                        has_trades = True
                         total_quantity = sum(trade['quantity'] for trade in trades)
                         total_value = sum(trade['price'] * trade['quantity'] for trade in trades)
                         output_data.update({
@@ -180,26 +185,13 @@ class BinanceWebSocket:
                             f"{side}_min_price": min(trade['price'] for trade in trades),
                             f"{side}_max_price": max(trade['price'] for trade in trades),
                             f"{side}_avg_price": total_value / total_quantity,
-                            "source": "binance",
-                            "baseCurrency": trades[0]['baseCurrency'],
-                            "quoteCurrency": trades[0]['quoteCurrency']
                         })
                         print(f"{symbol} {side}: {len(trades)} trades, total value: {total_value}")
                     else:
-                        output_data.update({
-                            f"{side}_count": 0,
-                            f"{side}_total_quantity": 0,
-                            f"{side}_total_value": 0,
-                            f"{side}_min_price": None,
-                            f"{side}_max_price": None,
-                            f"{side}_avg_price": None,
-                            "source": "binance",
-                            "baseCurrency": symbol[:-4],  # Assuming USDT pairs, adjust if needed
-                            "quoteCurrency": symbol[-4:]
-                        })
                         print(f"{symbol} {side}: No trades")
 
-                documents.append(output_data)
+                if has_trades:
+                    documents.append(output_data)
 
                 # Process big transactions
                 big_trades = self.big_transactions[symbol]
@@ -218,12 +210,15 @@ class BinanceWebSocket:
                         })
 
             # Insert regular transactions
-            self.mongo_helper.set_collection(self.stats_collection)
-            regular_insert_result = await self.bulk_insert(documents)
-            if regular_insert_result:
-                print(f"Successfully inserted {len(documents)} documents into {self.stats_collection}")
+            if documents:
+                self.mongo_helper.set_collection(self.stats_collection)
+                regular_insert_result = await self.bulk_insert(documents)
+                if regular_insert_result:
+                    print(f"Successfully inserted {len(documents)} documents into {self.stats_collection}")
+                else:
+                    print(f"No result returned from bulk insert into {self.stats_collection}")
             else:
-                print(f"No result returned from bulk insert into {self.stats_collection}")
+                print("No trades to insert for this interval")
 
             # Insert big transactions
             if big_transaction_documents:
@@ -240,6 +235,7 @@ class BinanceWebSocket:
             print(f"Error in process_and_store_data: {e}")
         finally:
             print("-"*50)
+
 
     async def bulk_insert(self, documents):
         try:
