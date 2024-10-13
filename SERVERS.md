@@ -7,6 +7,8 @@ POL,RENDER,ETC,XLM,STX,IMX,AAVE,OP,FIL,INJ,WBETH,FET,FDUSD,WIF,WBTC,LINK,BCH,DOT
 ```
 
 ------- OUTDATED -------
+
+
 ~150 MB of logs are produced every day on the servers
 
 ## Data Server 1
