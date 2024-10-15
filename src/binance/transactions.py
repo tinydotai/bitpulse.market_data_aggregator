@@ -20,7 +20,7 @@ class BinanceWebSocket:
         self.transactions = {}
         self.big_transactions = {}
         self.current_interval = None
-        self.interval_seconds = 10
+        self.interval_seconds = 1  # Changed from 10 to 1 second
         self.mongo_helper = mongo_helper
         self.max_retries = 10
         self.initial_retry_delay = 5
@@ -115,7 +115,7 @@ class BinanceWebSocket:
                 transaction_value = price * quantity
 
                 transaction_time = datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc)
-                interval_start = transaction_time.replace(second=transaction_time.second // self.interval_seconds * self.interval_seconds, microsecond=0)
+                interval_start = transaction_time.replace(microsecond=0)  # Round to the nearest second
 
                 if self.current_interval is None or interval_start > self.current_interval:
                     if self.current_interval is not None:
@@ -235,7 +235,6 @@ class BinanceWebSocket:
             print(f"Error in process_and_store_data: {e}")
         finally:
             print("-"*50)
-
 
     async def bulk_insert(self, documents):
         try:
