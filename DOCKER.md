@@ -63,6 +63,12 @@ This guide will walk you through the process of setting up and running the Binan
    docker run --name binance-transactions -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_binance_transactions:0.3.1 python /app/src/get_binance_transactions.py db_name=bitpulse_v2 stats_collection=transactions_stats_second big_transactions_collection=big_transactions pairs=BTCUSDT,ETHUSDT,SOLUSDT
    ```
 
+   kucoin pairs should be divided by -
+
+   ```
+   docker run --name kucoin-transactions -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_kucoin_transactions:1.0 python /app/src/get_kucoin_transactions.py db_name=testing stats_collection=transactions_stats_second big_transactions_collection=big_transactions pairs=BTC-USDT,ETH-USDT,SOL-USDT
+   ```
+
 Replace `your_db_name`, `your_stats_collection`, `your_big_transactions_collection`, and `PAIR1,PAIR2,PAIR3` with your desired values.
 
 For example:
