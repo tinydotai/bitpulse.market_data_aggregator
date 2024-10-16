@@ -40,9 +40,13 @@ def main():
         # Format and print results
         print(f"{'Pair':<15} {'Price':<10} {'Volume (USD)':<15} {'24h Change':<10}")
         print("-" * 50)
+        pairs = ''
         for ticker in top_50:
             formatted = format_ticker(ticker)
             print(f"{formatted['pair']:<15} {formatted['price']:<10.4f} {formatted['volume_usd']:<15,.0f} {formatted['24h_change']:<10}")
+            pairs += formatted['pair'].replace('/','') + ','
+        
+        print(pairs[:-1])
 
     except requests.RequestException as e:
         print(f"An error occurred while fetching data: {e}")
