@@ -7,6 +7,7 @@ from service.async_mongo import AsyncMongoDBHelper
 from bson import CodecOptions
 import websockets
 from prometheus_client import start_http_server, Counter, Gauge
+from coingecko.crypto_data import cryptos_by_symbol
 
 # Prometheus metrics
 TRANSACTIONS_TOTAL = Counter('kucoin_transactions_total', 'Total number of transactions', ['symbol', 'side'])
@@ -172,10 +173,10 @@ class KucoinWebSocket:
             for symbol, data in self.transactions.items():
                 output_data = {
                     "timestamp": timestamp,
-                    "symbol": symbol,
+                    "symbol": symbol.replace('-',''), # should be BTCUSDT
                     "source": "kucoin",
-                    "baseCurrency": symbol.split('-')[0],
-                    "quoteCurrency": symbol.split('-')[1]
+                    "baseCurrency": cryptos_by_symbol[symbol.split('-')[0]][0]["symbol"].upper(), # should be uppercase BTC
+                    "quoteCurrency": cryptos_by_symbol[symbol.split('-')[1]][0]["symbol"].upper()
                 }
 
                 has_trades = False
@@ -206,7 +207,7 @@ class KucoinWebSocket:
                     for trade in big_trades[side]:
                         big_transaction_documents.append({
                             "timestamp": trade['timestamp'],
-                            "symbol": symbol,
+                            "symbol": symbol.replace('-',''), # should be BTCUSDT
                             "side": side,
                             "price": trade['price'],
                             "quantity": trade['quantity'],
