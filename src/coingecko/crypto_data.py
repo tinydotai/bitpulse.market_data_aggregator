@@ -1,9 +1,10 @@
 import requests
 import json
 import time
+from collections import defaultdict
 
 def fetch_all_crypto_data():
-    all_cryptos = {}
+    all_cryptos = []
     url = "https://api.coingecko.com/api/v3/coins/markets"
     page = 1
     
@@ -23,8 +24,7 @@ def fetch_all_crypto_data():
             if not data:  # If the response is empty, we've reached the end
                 break
             
-            for crypto in data:
-                all_cryptos[crypto['id']] = crypto
+            all_cryptos.extend(data)
             
             print(f"Fetched page {page}, total cryptos: {len(all_cryptos)}")
             page += 1
@@ -37,6 +37,16 @@ def fetch_all_crypto_data():
     
     return all_cryptos
 
+def group_cryptos(data):
+    by_name = defaultdict(list)
+    by_symbol = defaultdict(list)
+
+    for crypto in data:
+        by_name[crypto['name']].append(crypto)
+        by_symbol[crypto['symbol'].upper()].append(crypto)
+
+    return dict(by_name), dict(by_symbol)
+
 def save_to_json(data, filename):
     with open(filename, 'w', encoding='utf-8') as jsonfile:
         json.dump(data, jsonfile, indent=2, ensure_ascii=False)
@@ -45,10 +55,16 @@ def main():
     print("Fetching all cryptocurrency data from CoinGecko...")
     all_crypto_data = fetch_all_crypto_data()
 
-    print(f"Saving {len(all_crypto_data)} cryptocurrencies to JSON file...")
-    save_to_json(all_crypto_data, 'all_cryptocurrencies.json')
+    print("Grouping cryptocurrencies by name and symbol...")
+    by_name, by_symbol = group_cryptos(all_crypto_data)
 
-    print("Done! Check 'all_cryptocurrencies.json' for the results.")
+    print(f"Saving {len(by_name)} name groups to 'cryptos_by_name.json'...")
+    save_to_json(by_name, 'cryptos_by_name.json')
+
+    print(f"Saving {len(by_symbol)} symbol groups to 'cryptos_by_symbol.json'...")
+    save_to_json(by_symbol, 'cryptos_by_symbol.json')
+
+    print("Done! Check 'cryptos_by_name.json' and 'cryptos_by_symbol.json' for the results.")
 
 if __name__ == "__main__":
     main()
