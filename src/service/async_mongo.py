@@ -56,6 +56,14 @@ class AsyncMongoDBHelper:
         result = await self.collection.update_one(query, {"$set": update})
         return result.modified_count
 
+    async def update_one_upsert(self, query: Dict[str, Any], update: Dict[str, Any]) -> Dict[str, Any]:
+        result = await self.collection.update_one(query, update, upsert=True)
+        return {
+            "matched_count": result.matched_count,
+            "modified_count": result.modified_count,
+            "upserted_id": result.upserted_id
+        }
+
     async def update_many(self, query: Dict[str, Any], update: Dict[str, Any]) -> int:
         result = await self.collection.update_many(query, {"$set": update})
         return result.modified_count
