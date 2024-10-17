@@ -106,10 +106,8 @@ class CoinGeckoDataFetcher:
             print(f"Waiting for {len(self.active_cryptos) * self.CALL_INTERVAL} seconds before next cycle...")
             await asyncio.sleep(len(self.active_cryptos) * self.CALL_INTERVAL)
 
-async def main():
+async def main(db_name, collection_name):
     try:
-        db_name = "your_db_name"
-        collection_name = "coingecko_data"
         
         mongo_helper = AsyncMongoDBHelper(db_name)
         
@@ -129,4 +127,4 @@ async def main():
         print("CoinGecko data fetching stopped")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main("test", "test"))
