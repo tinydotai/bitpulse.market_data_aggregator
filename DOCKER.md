@@ -77,6 +77,12 @@ For example:
 docker run --name binance-transactions -v $(pwd)/logs:/app/logs  binance-transactions python /app/src/get_binance_transactions.py db_name=test stats_collection=test_stats big_transactions_collection=test_big_transactions pairs=1000SATSUSDT,1INCHUSDT,ACAUSDT
 ```
 
+4.1 **Coingecko**
+
+```
+docker run --name coingecko-data -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_coingecko_data python /app/src/get_coingecko_data.py db_name=bitpulse_v2 data_collection=coingecko_data
+```
+
 5. **Running with Host Network** (if needed)
    If your application needs to connect to services running on your host machine (like a local MongoDB instance), use the `--network host` option:
    ```

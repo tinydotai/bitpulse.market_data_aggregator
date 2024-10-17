@@ -1,6 +1,6 @@
 import asyncio
 import sys
-from coingecko.fetch_coingecko_data import main
+from coingecko.coingecko_data import main
 
 # Parse command-line arguments
 args = dict(arg.split('=', 1) for arg in sys.argv[1:])
