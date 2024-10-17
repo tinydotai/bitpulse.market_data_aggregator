@@ -1,37 +1,42 @@
 import requests
-import json
+from typing import List, Dict
+from datetime import datetime
 
-def get_kucoin_top_50_symbols():
-    # KuCoin API endpoint for market data
-    url = "https://api.kucoin.com/api/v1/market/allTickers"
-
-    try:
-        # Send GET request to the API
-        response = requests.get(url)
-        response.raise_for_status()  # Raise an exception for bad status codes
-
-        # Parse the JSON response
+def get_binance_top_50_usdt_pairs() -> List[Dict]:
+    url = "https://api.coingecko.com/api/v3/exchanges/kucoin/tickers"
+    params = {
+        "order": "volume_desc",
+        "depth": "false"
+    }
+    
+    response = requests.get(url, params=params)
+    
+    if response.status_code == 200:
         data = response.json()
+        usdt_pairs = [pair for pair in data['tickers'] if pair['target'] == 'USDT']
+        return usdt_pairs[:50]
+    else:
+        raise Exception(f"Failed to fetch data: HTTP {response.status_code}")
 
-        # Extract the ticker data
-        tickers = data['data']['ticker']
+def format_datetime(dt_string: str) -> str:
+    dt = datetime.strptime(dt_string, "%Y-%m-%dT%H:%M:%S%z")
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Sort tickers by 24h volume in descending order
-        sorted_tickers = sorted(tickers, key=lambda x: float(x['volValue']), reverse=True)
+def main():
+    try:
+        top_50_usdt_pairs = get_binance_top_50_usdt_pairs()
+        top_list = []
+        
+        print("Top 50 USDT Trading Pairs on Binance by Volume:")
+        for idx, pair in enumerate(top_50_usdt_pairs, 1):
+            top_list.append({
+                "symbol" : pair['base'],
+                "id": pair['coin_id']
+            })
+    
+        print(top_list)
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
 
-        # Get the top 50 symbols
-        top_50_symbols = [ticker['symbol'] for ticker in sorted_tickers[:50]]
-
-        return top_50_symbols
-
-    except requests.RequestException as e:
-        print(f"An error occurred while fetching data: {e}")
-        return []
-
-# Fetch and print the top 50 crypto symbols
-top_50 = get_kucoin_top_50_symbols()
-pairs = ''
-print("Top 50 KuCoin crypto symbols by 24h volume:")
-for i, symbol in enumerate(top_50, 1):
-    pairs += symbol + ','
-print(pairs[:-1])
+if __name__ == "__main__":
+    main()
