@@ -4,7 +4,6 @@ import json
 from bson import json_util
 from service.mongo import MongoDBHelper
 from service.s3 import S3Helper
-import io
 
 class TradingDataProcessor:
     def __init__(self, 
@@ -14,9 +13,14 @@ class TradingDataProcessor:
         self.mongo_helper.set_collection(collection_name)
         self.s3_helper = S3Helper()
 
-    def get_documents_older_than_4h(self) -> List[Dict]:
-        """Fetch documents older than 4 hours from MongoDB."""
-        cutoff_time = datetime.utcnow() - timedelta(hours=4)
+    def get_documents_older_than_24h(self) -> List[Dict]:
+        """Fetch documents older than 24 hours from MongoDB."""
+        current_time = datetime.utcnow()
+        # Round up to the next hour
+        if current_time.minute > 0 or current_time.second > 0:
+            current_time = (current_time + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+        
+        cutoff_time = current_time - timedelta(hours=4)
         
         query = {
             "symbol": {"$in": ["BTCUSDT", "ETHUSDT"]},
@@ -25,6 +29,10 @@ class TradingDataProcessor:
             }
         }
         from pprint import pprint
+        print("Query cutoff time:")
+        print(f"Current time: {datetime.utcnow()}")
+        print(f"Rounded current time: {current_time}")
+        print(f"Processing documents older than: {cutoff_time}")
         pprint(query)
         
         return self.mongo_helper.find_many(query)
@@ -51,10 +59,12 @@ class TradingDataProcessor:
                     'end_time': hour_end,
                     'symbol': doc['symbol'],
                     'source': doc['source'],
-                    'documents': []
+                    'documents': [],
+                    'document_ids': []
                 }
             
             hourly_groups[key]['documents'].append(doc)
+            hourly_groups[key]['document_ids'].append(doc['_id'])
         
         return hourly_groups
 
@@ -75,7 +85,7 @@ class TradingDataProcessor:
             json_data = json.dumps(output_data, default=json_util.default, indent=2)
             
             # Create S3 key with symbol-based path
-            s3_key = f"trading_data/{group['symbol']}/{key}.json"
+            s3_key = f"data/{group['symbol']}/{key}.json"
             
             # Upload directly to S3
             self.s3_helper.s3_client.put_object(
@@ -91,29 +101,81 @@ class TradingDataProcessor:
             print(f"Error uploading to S3: {e}")
             return False
 
-    def process_and_save(self):
-        """Main method to process documents and save directly to S3."""
+    def delete_processed_documents(self, document_ids: List) -> int:
+        """Delete processed documents from MongoDB."""
         try:
-            # Fetch documents
-            documents = self.get_documents_older_than_4h()
+            query = {
+                "_id": {"$in": document_ids}
+            }
+            deleted_count = self.mongo_helper.delete_many(query)
+            print(f"Deleted {deleted_count} documents from MongoDB")
+            return deleted_count
+            
+        except Exception as e:
+            print(f"Error deleting documents from MongoDB: {e}")
+            return 0
+
+    def verify_deletion(self) -> bool:
+        """Verify that no documents older than 24 hours remain."""
+        cutoff_time = datetime.utcnow() - timedelta(hours=24)
+        query = {
+            "symbol": {"$in": ["BTCUSDT", "ETHUSDT"]},
+            "timestamp": {"$lt": cutoff_time}
+        }
+        remaining_docs = self.mongo_helper.find_many(query)
+        return len(remaining_docs) == 0
+
+    def process_upload_and_cleanup(self):
+        """Main method to process documents older than 24h, upload to S3, and clean up MongoDB."""
+        try:
+            # Fetch documents older than 24 hours
+            print("Fetching documents older than 24 hours...")
+            documents = self.get_documents_older_than_24h()
             if not documents:
-                print("No documents found older than 4 hours.")
+                print("No documents found older than 24 hours.")
                 return
             
             # Group documents by hour
+            print(f"Grouping {len(documents)} documents by hour...")
             hourly_groups = self.group_by_hour(documents)
+            print(f"Found {len(hourly_groups)} hour groups")
             
-            # Upload each group directly to S3
-            uploaded_count = 0
+            # Process each group
+            total_processed = 0
+            total_deleted = 0
+            failed_uploads = []
+            
             for key, group in hourly_groups.items():
+                print(f"\nProcessing group: {key}")
+                print(f"Documents in group: {len(group['documents'])}")
+                
+                # Upload to S3
                 if self.upload_hour_group_to_s3(key, group):
-                    uploaded_count += 1
+                    total_processed += 1
+                    # Delete from MongoDB only if S3 upload was successful
+                    deleted_count = self.delete_processed_documents(group['document_ids'])
+                    total_deleted += deleted_count
+                else:
+                    failed_uploads.append(key)
+                    print(f"Failed to upload group: {key}")
             
-            print(f"Successfully processed {len(documents)} documents.")
-            print(f"Uploaded {uploaded_count} files to S3.")
+            # Verify deletion
+            all_deleted = self.verify_deletion()
+            
+            print(f"\nProcessing Summary:")
+            print(f"- Total documents processed: {len(documents)}")
+            print(f"- Hour groups processed: {len(hourly_groups)}")
+            print(f"- Files uploaded to S3: {total_processed}")
+            print(f"- Documents deleted from MongoDB: {total_deleted}")
+            print(f"- All old documents deleted: {'Yes' if all_deleted else 'No'}")
+            
+            if failed_uploads:
+                print(f"\nFailed uploads ({len(failed_uploads)}):")
+                for failed_key in failed_uploads:
+                    print(f"- {failed_key}")
             
         except Exception as e:
-            print(f"Error processing documents: {e}")
+            print(f"Error in processing: {e}")
         finally:
             self.mongo_helper.close_connection()
 
@@ -126,7 +188,7 @@ def main():
     
     # Initialize and run processor
     processor = TradingDataProcessor(**config)
-    processor.process_and_save()
+    processor.process_upload_and_cleanup()
 
 if __name__ == "__main__":
     main()
