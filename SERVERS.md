@@ -1,6 +1,6 @@
 One data server with top 50 binance coins
 
-3.112.211.54
+43.207.236.27
 
 binance-transactions_1
 
