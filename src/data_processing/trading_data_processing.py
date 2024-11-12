@@ -67,19 +67,23 @@ class TradingDataProcessor:
             filename = f"{key}.json"
             filepath = os.path.join(self.output_dir, filename)
             
+            # Count total documents
+            total_docs = len(group['documents'])
+            
             # Prepare the output data structure
             output_data = {
                 "symbol": group['documents'][0]['symbol'],
                 "source": group['documents'][0]['source'],
                 "interval_start": group['start_time'].strftime("%Y-%m-%d %H:%M:%S"),
                 "interval_end": group['end_time'].strftime("%Y-%m-%d %H:%M:%S"),
+                "total_documents": total_docs,
                 "documents": group['documents']
             }
             
             # Save to file using json_util to handle MongoDB specific types
             with open(filepath, 'w') as f:
                 json.dump(output_data, f, indent=2, default=json_util.default)
-            print(f"Created file: {filepath} with {len(group['documents'])} documents")
+            print(f"Created file: {filepath} with {total_docs} documents")
 
     def process_and_save(self):
         """Main method to process documents and save results."""
