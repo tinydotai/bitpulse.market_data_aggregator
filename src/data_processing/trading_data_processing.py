@@ -1,46 +1,43 @@
-import json
 from datetime import datetime, timedelta
 from pathlib import Path
+import json
 from typing import List, Dict
 import os
-from pymongo import MongoClient
 from bson import json_util
+from service.mongo import MongoDBHelper
 
-class OldDataProcessor:
+class TradingDataProcessor:
     def __init__(self, 
-                 mongo_uri: str = "mongodb://localhost:27017",
-                 database: str = "your_database",
-                 collection: str = "your_collection",
+                 database_name: str,
+                 collection_name: str,
                  output_dir: str = "daily_data"):
         """
         Initialize the processor with MongoDB connection and output directory.
         
         Args:
-            mongo_uri: MongoDB connection URI
-            database: Name of the database
-            collection: Name of the collection
+            database_name: Name of the database
+            collection_name: Name of the collection
             output_dir: Directory to save output JSON files
         """
-        self.client = MongoClient(mongo_uri)
-        self.db = self.client[database]
-        self.collection = self.db[collection]
+        self.mongo_helper = MongoDBHelper(database_name)
+        self.mongo_helper.set_collection(collection_name)
         self.output_dir = output_dir
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     def get_documents_older_than_24h(self) -> List[Dict]:
         """Fetch documents older than 24 hours from MongoDB."""
-        cutoff_time = datetime.utcnow() - timedelta(hours=24)
+        cutoff_time = datetime.utcnow() - timedelta(hours=4)
         
-        # Query MongoDB for documents older than 24 hours
         query = {
+            "symbol" : {"$in" : ["BTCUSDT", "ETHUSDT"] },
             "timestamp": {
                 "$lt": cutoff_time
             }
         }
+        from pprint import pprint
+        pprint(query)
         
-        # Sort by timestamp to ensure consistent processing
-        documents = list(self.collection.find(query).sort("timestamp", 1))
-        return documents
+        return self.mongo_helper.find_many(query)
 
     def group_documents(self, documents: List[Dict]) -> Dict:
         """Group documents by symbol and source."""
@@ -157,19 +154,18 @@ class OldDataProcessor:
         except Exception as e:
             print(f"Error processing documents: {e}")
         finally:
-            self.client.close()
+            self.mongo_helper.close_connection()
 
 def main():
     # Configuration
     config = {
-        "mongo_uri": "mongodb://localhost:27017",  # Update with your MongoDB URI
-        "database": "your_database",               # Update with your database name
-        "collection": "your_collection",           # Update with your collection name
-        "output_dir": "daily_data"                # Update if you want a different output directory
+        "database_name": "bitpulse_v2",        # Update with your database name
+        "collection_name": "transactions_stats_second",          # Update with your collection name
+        "output_dir": "daily_data"           # Update if you want a different output directory
     }
     
     # Initialize and run processor
-    processor = OldDataProcessor(**config)
+    processor = TradingDataProcessor(**config)
     processor.process_and_save()
 
 if __name__ == "__main__":
