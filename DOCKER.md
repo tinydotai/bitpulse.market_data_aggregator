@@ -54,19 +54,19 @@ This guide will walk you through the process of setting up and running the Binan
    To run the container, use the following command:
 
    ```
-   docker run --name binance-transactions -v $(pwd)/logs:/app/logs binance-transactions python /app/src/get_binance_transactions.py db_name=your_db_name stats_collection=your_stats_collection big_transactions_collection=your_big_transactions_collection pairs=BTCUSDT,ETHUSDT,SOLUSDT
+   docker run --name binance-transactions binance-transactions python /app/src/get_binance_transactions.py db_name=your_db_name stats_collection=your_stats_collection big_transactions_collection=your_big_transactions_collection pairs=BTCUSDT,ETHUSDT,SOLUSDT
    ```
 
    for real
 
    ```
-   docker run --name binance-transactions -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_binance_transactions:0.3.1 python /app/src/get_binance_transactions.py db_name=bitpulse_v2 stats_collection=transactions_stats_second big_transactions_collection=big_transactions pairs=BTCUSDT,ETHUSDT,SOLUSDT
+   docker run --name binance-transactions -d l0rtk/bitpulse_binance_transactions:0.3.1 python /app/src/get_binance_transactions.py db_name=bitpulse_v2 stats_collection=transactions_stats_second big_transactions_collection=big_transactions pairs=BTCUSDT,ETHUSDT,SOLUSDT
    ```
 
    kucoin pairs should be divided by -
 
    ```
-   docker run --name kucoin-transactions -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_kucoin_transactions:1.0 python /app/src/get_kucoin_transactions.py db_name=testing stats_collection=transactions_stats_second big_transactions_collection=big_transactions pairs=BTC-USDT,ETH-USDT,SOL-USDT
+   docker run --name kucoin-transactions -d l0rtk/bitpulse_kucoin_transactions:1.0 python /app/src/get_kucoin_transactions.py db_name=testing stats_collection=transactions_stats_second big_transactions_collection=big_transactions pairs=BTC-USDT,ETH-USDT,SOL-USDT
    ```
 
 Replace `your_db_name`, `your_stats_collection`, `your_big_transactions_collection`, and `PAIR1,PAIR2,PAIR3` with your desired values.
@@ -74,19 +74,19 @@ Replace `your_db_name`, `your_stats_collection`, `your_big_transactions_collecti
 For example:
 
 ```
-docker run --name binance-transactions -v $(pwd)/logs:/app/logs  binance-transactions python /app/src/get_binance_transactions.py db_name=test stats_collection=test_stats big_transactions_collection=test_big_transactions pairs=1000SATSUSDT,1INCHUSDT,ACAUSDT
+docker run --name binance-transactions -d binance-transactions python /app/src/get_binance_transactions.py db_name=test stats_collection=test_stats big_transactions_collection=test_big_transactions pairs=1000SATSUSDT,1INCHUSDT,ACAUSDT
 ```
 
 4.1 **Coingecko**
 
 ```
-docker run --name coingecko-data -v $(pwd)/logs:/app/logs -d l0rtk/bitpulse_coingecko_data:1.0 python /app/src/get_coingecko_data.py db_name=bitpulse_v2 data_collection=coingecko_data
+docker run --name coingecko-data -d l0rtk/bitpulse_coingecko_data:1.0 python /app/src/get_coingecko_data.py db_name=bitpulse_v2 data_collection=coingecko_data
 ```
 
 5. **Running with Host Network** (if needed)
    If your application needs to connect to services running on your host machine (like a local MongoDB instance), use the `--network host` option:
    ```
-   docker run --name binance-transactions -v $(pwd)/logs:/app/logs --network host binance-transactions python /app/src/service/get_binance_transactions.py db_name=test stats_collection=test_stats big_transactions_collection=test_big_transactions pairs=1000SATSUSDT,1INCHUSDT,ACAUSDT
+   docker run --name binance-transactions --network host binance-transactions python /app/src/service/get_binance_transactions.py db_name=test stats_collection=test_stats big_transactions_collection=test_big_transactions pairs=1000SATSUSDT,1INCHUSDT,ACAUSDT
    ```
 
 ## Troubleshooting
