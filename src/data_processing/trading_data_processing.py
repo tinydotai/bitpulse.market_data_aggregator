@@ -5,6 +5,7 @@ from typing import List, Dict
 import os
 from bson import json_util
 from service.mongo import MongoDBHelper
+from service.s3 import S3Helper
 
 class TradingDataProcessor:
     def __init__(self, 
@@ -15,6 +16,7 @@ class TradingDataProcessor:
         self.mongo_helper.set_collection(collection_name)
         self.output_dir = output_dir
         Path(output_dir).mkdir(parents=True, exist_ok=True)
+        self.s3_helper = S3Helper()  # Initialize S3 helper
 
     def get_documents_older_than_4h(self) -> List[Dict]:
         """Fetch documents older than 4 hours from MongoDB."""
@@ -97,10 +99,18 @@ class TradingDataProcessor:
             # Group documents by hour
             hourly_groups = self.group_by_hour(documents)
             
-            # Save files
+            # Save files locally
             self.save_hourly_files(hourly_groups)
             
+            # Upload files to S3
+            print("Uploading files to S3...")
+            uploaded_files = self.s3_helper.upload_files(
+                self.output_dir,
+                prefix=f"hourly_data/{datetime.utcnow().strftime('%Y-%m-%d')}"
+            )
+            
             print(f"Successfully processed {len(documents)} documents.")
+            print(f"Uploaded {len(uploaded_files)} files to S3.")
             
         except Exception as e:
             print(f"Error processing documents: {e}")
