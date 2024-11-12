@@ -16,7 +16,7 @@ class TradingDataProcessor:
         self.mongo_helper.set_collection(collection_name)
         self.output_dir = output_dir
         Path(output_dir).mkdir(parents=True, exist_ok=True)
-        self.s3_helper = S3Helper()  # Initialize S3 helper
+        self.s3_helper = S3Helper()
 
     def get_documents_older_than_4h(self) -> List[Dict]:
         """Fetch documents older than 4 hours from MongoDB."""
@@ -53,6 +53,7 @@ class TradingDataProcessor:
                 hourly_groups[key] = {
                     'start_time': hour_start,
                     'end_time': hour_end,
+                    'symbol': doc['symbol'],
                     'documents': []
                 }
             
@@ -60,8 +61,13 @@ class TradingDataProcessor:
         
         return hourly_groups
 
-    def save_hourly_files(self, hourly_groups: Dict[str, List[Dict]]):
-        """Save files containing all documents for each hour interval."""
+    def save_hourly_files(self, hourly_groups: Dict[str, List[Dict]]) -> List[Dict]:
+        """
+        Save files containing all documents for each hour interval.
+        Returns list of file information for S3 upload.
+        """
+        saved_files = []
+        
         for key, group in hourly_groups.items():
             if not group['documents']:
                 continue
@@ -86,6 +92,32 @@ class TradingDataProcessor:
             with open(filepath, 'w') as f:
                 json.dump(output_data, f, indent=2, default=json_util.default)
             print(f"Created file: {filepath} with {total_docs} documents")
+            
+            # Add file info to list for S3 upload
+            saved_files.append({
+                'local_path': filepath,
+                'filename': filename,
+                'symbol': group['symbol']
+            })
+            
+        return saved_files
+
+    def upload_to_s3(self, saved_files: List[Dict]):
+        """Upload files to S3 organized by symbol."""
+        uploaded_files = []
+        
+        for file_info in saved_files:
+            # Create S3 key with symbol-based path
+            s3_key = f"hourly_data/{file_info['symbol']}/{file_info['filename']}"
+            
+            # Upload file
+            if self.s3_helper.upload_file(file_info['local_path'], s3_key):
+                uploaded_files.append(s3_key)
+                
+                # Optionally, remove local file after successful upload
+                os.remove(file_info['local_path'])
+        
+        return uploaded_files
 
     def process_and_save(self):
         """Main method to process documents and save results."""
@@ -99,18 +131,19 @@ class TradingDataProcessor:
             # Group documents by hour
             hourly_groups = self.group_by_hour(documents)
             
-            # Save files locally
-            self.save_hourly_files(hourly_groups)
+            # Save files locally and get file information
+            saved_files = self.save_hourly_files(hourly_groups)
             
             # Upload files to S3
             print("Uploading files to S3...")
-            uploaded_files = self.s3_helper.upload_files(
-                self.output_dir,
-                prefix=f"hourly_data/{datetime.utcnow().strftime('%Y-%m-%d')}"
-            )
+            uploaded_files = self.upload_to_s3(saved_files)
             
             print(f"Successfully processed {len(documents)} documents.")
             print(f"Uploaded {len(uploaded_files)} files to S3.")
+            
+            # Clean up output directory
+            if os.path.exists(self.output_dir) and not os.listdir(self.output_dir):
+                os.rmdir(self.output_dir)
             
         except Exception as e:
             print(f"Error processing documents: {e}")
