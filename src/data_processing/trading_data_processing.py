@@ -1,21 +1,17 @@
 from datetime import datetime, timedelta
-from pathlib import Path
-import json
 from typing import List, Dict
-import os
+import json
 from bson import json_util
 from service.mongo import MongoDBHelper
 from service.s3 import S3Helper
+import io
 
 class TradingDataProcessor:
     def __init__(self, 
                  database_name: str,
-                 collection_name: str,
-                 output_dir: str = "hourly_data"):
+                 collection_name: str):
         self.mongo_helper = MongoDBHelper(database_name)
         self.mongo_helper.set_collection(collection_name)
-        self.output_dir = output_dir
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
         self.s3_helper = S3Helper()
 
     def get_documents_older_than_4h(self) -> List[Dict]:
@@ -54,6 +50,7 @@ class TradingDataProcessor:
                     'start_time': hour_start,
                     'end_time': hour_end,
                     'symbol': doc['symbol'],
+                    'source': doc['source'],
                     'documents': []
                 }
             
@@ -61,66 +58,41 @@ class TradingDataProcessor:
         
         return hourly_groups
 
-    def save_hourly_files(self, hourly_groups: Dict[str, List[Dict]]) -> List[Dict]:
-        """
-        Save files containing all documents for each hour interval.
-        Returns list of file information for S3 upload.
-        """
-        saved_files = []
-        
-        for key, group in hourly_groups.items():
-            if not group['documents']:
-                continue
-            
-            filename = f"{key}.json"
-            filepath = os.path.join(self.output_dir, filename)
-            
-            # Count total documents
-            total_docs = len(group['documents'])
-            
+    def upload_hour_group_to_s3(self, key: str, group: Dict) -> bool:
+        """Upload a single hour group directly to S3."""
+        try:
             # Prepare the output data structure
             output_data = {
-                "symbol": group['documents'][0]['symbol'],
-                "source": group['documents'][0]['source'],
+                "symbol": group['symbol'],
+                "source": group['source'],
                 "interval_start": group['start_time'].strftime("%Y-%m-%d %H:%M:%S"),
                 "interval_end": group['end_time'].strftime("%Y-%m-%d %H:%M:%S"),
-                "total_documents": total_docs,
+                "total_documents": len(group['documents']),
                 "documents": group['documents']
             }
             
-            # Save to file using json_util to handle MongoDB specific types
-            with open(filepath, 'w') as f:
-                json.dump(output_data, f, indent=2, default=json_util.default)
-            print(f"Created file: {filepath} with {total_docs} documents")
+            # Convert to JSON string
+            json_data = json.dumps(output_data, default=json_util.default, indent=2)
             
-            # Add file info to list for S3 upload
-            saved_files.append({
-                'local_path': filepath,
-                'filename': filename,
-                'symbol': group['symbol']
-            })
-            
-        return saved_files
-
-    def upload_to_s3(self, saved_files: List[Dict]):
-        """Upload files to S3 organized by symbol."""
-        uploaded_files = []
-        
-        for file_info in saved_files:
             # Create S3 key with symbol-based path
-            s3_key = f"hourly_data/{file_info['symbol']}/{file_info['filename']}"
+            s3_key = f"trading_data/{group['symbol']}/{key}.json"
             
-            # Upload file
-            if self.s3_helper.upload_file(file_info['local_path'], s3_key):
-                uploaded_files.append(s3_key)
-                
-                # Optionally, remove local file after successful upload
-                os.remove(file_info['local_path'])
-        
-        return uploaded_files
+            # Upload directly to S3
+            self.s3_helper.s3_client.put_object(
+                Bucket=self.s3_helper.bucket_name,
+                Key=s3_key,
+                Body=json_data
+            )
+            
+            print(f"Uploaded to S3: {s3_key} with {len(group['documents'])} documents")
+            return True
+            
+        except Exception as e:
+            print(f"Error uploading to S3: {e}")
+            return False
 
     def process_and_save(self):
-        """Main method to process documents and save results."""
+        """Main method to process documents and save directly to S3."""
         try:
             # Fetch documents
             documents = self.get_documents_older_than_4h()
@@ -131,19 +103,14 @@ class TradingDataProcessor:
             # Group documents by hour
             hourly_groups = self.group_by_hour(documents)
             
-            # Save files locally and get file information
-            saved_files = self.save_hourly_files(hourly_groups)
-            
-            # Upload files to S3
-            print("Uploading files to S3...")
-            uploaded_files = self.upload_to_s3(saved_files)
+            # Upload each group directly to S3
+            uploaded_count = 0
+            for key, group in hourly_groups.items():
+                if self.upload_hour_group_to_s3(key, group):
+                    uploaded_count += 1
             
             print(f"Successfully processed {len(documents)} documents.")
-            print(f"Uploaded {len(uploaded_files)} files to S3.")
-            
-            # Clean up output directory
-            if os.path.exists(self.output_dir) and not os.listdir(self.output_dir):
-                os.rmdir(self.output_dir)
+            print(f"Uploaded {uploaded_count} files to S3.")
             
         except Exception as e:
             print(f"Error processing documents: {e}")
@@ -154,8 +121,7 @@ def main():
     # Configuration
     config = {
         "database_name": "bitpulse_v2",
-        "collection_name": "transactions_stats_second",
-        "output_dir": "hourly_data"
+        "collection_name": "transactions_stats_second"
     }
     
     # Initialize and run processor

@@ -1,6 +1,7 @@
+# service/s3.py
 import os
 import boto3
-from typing import List
+from typing import List, Union
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
@@ -24,94 +25,47 @@ class S3Helper:
             region_name=self.region_name
         )
 
-    def upload_file(self, file_path: str, s3_key: str = None) -> bool:
+    def upload_data(self, data: Union[str, bytes], s3_key: str) -> bool:
         """
-        Upload a file to S3 bucket.
+        Upload data directly to S3 without creating a local file.
         
         Args:
-            file_path: Local path to the file
-            s3_key: The key (path) where the file will be stored in S3. 
-                   If None, uses the filename as key.
+            data: The data to upload (string or bytes)
+            s3_key: The key (path) where the data will be stored in S3
         
         Returns:
             bool: True if upload was successful, False otherwise
         """
         try:
-            if not os.path.exists(file_path):
-                print(f"File not found: {file_path}")
-                return False
-            
-            # If s3_key is not provided, use the filename
-            if s3_key is None:
-                s3_key = os.path.basename(file_path)
-            
-            self.s3_client.upload_file(file_path, self.bucket_name, s3_key)
-            print(f"Successfully uploaded {file_path} to s3://{self.bucket_name}/{s3_key}")
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=s3_key,
+                Body=data
+            )
+            print(f"Successfully uploaded data to s3://{self.bucket_name}/{s3_key}")
             return True
             
         except ClientError as e:
-            print(f"Error uploading file to S3: {e}")
+            print(f"Error uploading data to S3: {e}")
             return False
 
-    def upload_files(self, directory: str, prefix: str = "") -> List[str]:
+    def download_file(self, s3_key: str) -> Union[str, None]:
         """
-        Upload all files from a directory to S3.
-        
-        Args:
-            directory: Local directory containing files to upload
-            prefix: Prefix to add to S3 keys (like a folder path)
-        
-        Returns:
-            List[str]: List of successfully uploaded file keys
-        """
-        uploaded_files = []
-        
-        try:
-            # Ensure directory exists
-            if not os.path.exists(directory):
-                print(f"Directory not found: {directory}")
-                return uploaded_files
-
-            # Walk through directory
-            for root, _, files in os.walk(directory):
-                for file in files:
-                    local_path = os.path.join(root, file)
-                    
-                    # Create S3 key with prefix
-                    relative_path = os.path.relpath(local_path, directory)
-                    s3_key = os.path.join(prefix, relative_path).replace("\\", "/")
-                    
-                    # Upload file
-                    if self.upload_file(local_path, s3_key):
-                        uploaded_files.append(s3_key)
-        
-        except Exception as e:
-            print(f"Error uploading files to S3: {e}")
-        
-        return uploaded_files
-
-    def download_file(self, s3_key: str, local_path: str) -> bool:
-        """
-        Download a file from S3 bucket.
+        Download a file from S3 bucket and return its contents.
         
         Args:
             s3_key: The key of the file in S3
-            local_path: Local path where the file should be saved
         
         Returns:
-            bool: True if download was successful, False otherwise
+            str: File contents if successful, None if failed
         """
         try:
-            # Ensure the directory exists
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            
-            self.s3_client.download_file(self.bucket_name, s3_key, local_path)
-            print(f"Successfully downloaded s3://{self.bucket_name}/{s3_key} to {local_path}")
-            return True
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=s3_key)
+            return response['Body'].read().decode('utf-8')
             
         except ClientError as e:
             print(f"Error downloading file from S3: {e}")
-            return False
+            return None
 
     def list_files(self, prefix: str = "") -> List[str]:
         """
