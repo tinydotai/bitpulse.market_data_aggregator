@@ -17,11 +17,11 @@ docker run --name binance-transactions-2 -d l0rtk/bitpulse_binance_transactions:
 kucoin-transactions_1
 
 ```
-docker run --name kucoin-transactions-1 -d l0rtk/bitpulse_kucoin_transactions:1.0 python /app/src/get_kucoin_transactions.py db_name=bitpulse_v2 stats_collection=transactions_stats_second big_transactions_collection=big_transactions pairs=BTC-USDT,DOGE-USDT,ETH-USDT,PEPE-USDT,PNUT-USDT,USDC-USDT,SOL-USDT,XRP-USDT,SHIB-USDT,WIF-USDT,SUI-USDT,BONK-USDT,BNB-USDT,FLOKI-USDT,ADA-USDT,BOME-USDT,AVAX-USDT,FET-USDT,WLD-USDT,TRX-USDT,APT-USDT,NEAR-USDT,RUNE-USDT,HBAR-USDT,ENA-USDT,FTM-USDT
+docker run --name kucoin-transactions-1 -d l0rtk/bitpulse_kucoin_transactions:1.1 python /app/src/get_kucoin_transactions.py db_name=bitpulse_v2 stats_collection=transactions_stats_second big_transactions_collection=big_transactions pairs=BTC-USDT,DOGE-USDT,ETH-USDT,PEPE-USDT,PNUT-USDT,USDC-USDT,SOL-USDT,XRP-USDT,SHIB-USDT,WIF-USDT,SUI-USDT,BONK-USDT,BNB-USDT,FLOKI-USDT,ADA-USDT,BOME-USDT,AVAX-USDT,FET-USDT,WLD-USDT,TRX-USDT,APT-USDT,NEAR-USDT,RUNE-USDT,HBAR-USDT,ENA-USDT,FTM-USDT
 ```
 
 kucoin-transactions_2
 
 ```
-docker run --name kucoin-transactions-2 -d l0rtk/bitpulse_kucoin_transactions:1.0 python /app/src/get_kucoin_transactions.py db_name=bitpulse_v2 stats_collection=transactions_stats_second big_transactions_collection=big_transactions pairs=SEI-USDT,PEOPLE-USDT,RENDER-USDT,ORDI-USDT,ARB-USDT,TAO-USDT,LINK-USDT,DOT-USDT,MEME-USDT,OP-USDT,RAY-USDT,TURBO-USDT,LTC-USDT,INJ-USDT,TIA-USDT,TON-USDT,POL-USDT,UNI-USDT,BCH-USDT,DOGS-USDT,NOT-USDT,XLM-USDT,AAVE-USDT,GALA-USDT
+docker run --name kucoin-transactions-2 -d l0rtk/bitpulse_kucoin_transactions:1.1 python /app/src/get_kucoin_transactions.py db_name=bitpulse_v2 stats_collection=transactions_stats_second big_transactions_collection=big_transactions pairs=SEI-USDT,PEOPLE-USDT,RENDER-USDT,ORDI-USDT,ARB-USDT,TAO-USDT,LINK-USDT,DOT-USDT,MEME-USDT,OP-USDT,RAY-USDT,TURBO-USDT,LTC-USDT,INJ-USDT,TIA-USDT,TON-USDT,POL-USDT,UNI-USDT,BCH-USDT,DOGS-USDT,NOT-USDT,XLM-USDT,AAVE-USDT,GALA-USDT
 ```
