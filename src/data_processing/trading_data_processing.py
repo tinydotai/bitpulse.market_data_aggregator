@@ -20,10 +20,9 @@ class TradingDataProcessor:
         if current_time.minute > 0 or current_time.second > 0:
             current_time = (current_time + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
         
-        cutoff_time = current_time - timedelta(hours=4)
+        cutoff_time = current_time - timedelta(hours=24)
         
         query = {
-            "symbol": {"$in": ["BTCUSDT", "ETHUSDT"]},
             "timestamp": {
                 "$lt": cutoff_time
             }
@@ -119,7 +118,6 @@ class TradingDataProcessor:
         """Verify that no documents older than 24 hours remain."""
         cutoff_time = datetime.utcnow() - timedelta(hours=24)
         query = {
-            "symbol": {"$in": ["BTCUSDT", "ETHUSDT"]},
             "timestamp": {"$lt": cutoff_time}
         }
         remaining_docs = self.mongo_helper.find_many(query)
