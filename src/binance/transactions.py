@@ -14,7 +14,7 @@ PRICE_GAUGE = Gauge('binance_price', 'Current price', ['symbol'])
 BIG_TRANSACTIONS = Counter('binance_big_transactions_total', 'Number of big transactions', ['symbol', 'side'])
 
 class BinanceWebSocket:
-    def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, stats_collection, big_transactions_collection):
+    def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, stats_collection, big_transactions_collection, prices_collection):
         self.pairs = pairs
         self.base_url = "wss://stream.binance.com:9443/ws"
         self.transactions = {}
@@ -27,7 +27,8 @@ class BinanceWebSocket:
         self.max_retry_delay = 60  # 1 minute
         self.BIG_TRANSACTION_THRESHOLD = 10000  # $10,000 threshold for big transactions
         self.stats_collection = stats_collection
-        self.big_transactions_collection = big_transactions_collection 
+        self.big_transactions_collection = big_transactions_collection
+        self.prices_collection = prices_collection
         start_http_server(8000)  # Prometheus will scrape metrics from this port
 
     async def connect(self):
@@ -161,39 +162,65 @@ class BinanceWebSocket:
 
             documents = []
             big_transaction_documents = []
+            price_documents = []
+            price_updates = {}  # Store latest prices for DATA collection
 
             for symbol, data in self.transactions.items():
                 output_data = {
                     "timestamp": timestamp,
                     "symbol": symbol,
                     "source": "binance",
-                    "baseCurrency": symbol[:-4],  # Assuming USDT pairs, adjust if needed
+                    "baseCurrency": symbol[:-4],
                     "quoteCurrency": symbol[-4:]
                 }
 
                 has_trades = False
+                total_value = 0
+                total_quantity = 0
+
                 for side in ['buy', 'sell']:
                     trades = data[side]
                     if trades:
                         has_trades = True
-                        total_quantity = sum(trade['quantity'] for trade in trades)
-                        total_value = sum(trade['price'] * trade['quantity'] for trade in trades)
+                        side_quantity = sum(trade['quantity'] for trade in trades)
+                        side_value = sum(trade['price'] * trade['quantity'] for trade in trades)
+                        total_quantity += side_quantity
+                        total_value += side_value
                         output_data.update({
                             f"{side}_count": len(trades),
-                            f"{side}_total_quantity": total_quantity,
-                            f"{side}_total_value": total_value,
+                            f"{side}_total_quantity": side_quantity,
+                            f"{side}_total_value": side_value,
                             f"{side}_min_price": min(trade['price'] for trade in trades),
                             f"{side}_max_price": max(trade['price'] for trade in trades),
-                            f"{side}_avg_price": total_value / total_quantity,
+                            f"{side}_avg_price": side_value / side_quantity,
                         })
-                        print(f"{symbol} {side}: {len(trades)} trades, total value: {total_value}")
+                        print(f"{symbol} {side}: {len(trades)} trades, total value: {side_value}")
                     else:
                         print(f"{symbol} {side}: No trades")
 
                 if has_trades:
                     documents.append(output_data)
 
-                # Process big transactions
+                    # Calculate weighted average price
+                    weighted_avg_price = total_value / total_quantity
+
+                    # Create price document
+                    price_document = {
+                        "timestamp": timestamp,
+                        "symbol": symbol,
+                        "source": "binance",
+                        "price": weighted_avg_price,
+                        "baseCurrency": symbol[:-4],
+                        "quoteCurrency": symbol[-4:]
+                    }
+                    price_documents.append(price_document)
+
+                    # Store price for DATA collection update
+                    token_symbol = symbol[:-4].lower()  # Remove USDT and convert to lowercase
+                    if token_symbol not in price_updates:
+                        price_updates[token_symbol] = weighted_avg_price
+
+                # Process big transactions 
                 big_trades = self.big_transactions[symbol]
                 for side in ['buy', 'sell']:
                     for trade in big_trades[side]:
@@ -209,7 +236,7 @@ class BinanceWebSocket:
                             "quoteCurrency": trade['quoteCurrency']
                         })
 
-            # Insert regular transactions
+            # Regular data inserts
             if documents:
                 self.mongo_helper.set_collection(self.stats_collection)
                 regular_insert_result = await self.bulk_insert(documents)
@@ -220,7 +247,37 @@ class BinanceWebSocket:
             else:
                 print("No trades to insert for this interval")
 
-            # Insert big transactions
+            # Insert price documents
+            if price_documents:
+                self.mongo_helper.set_collection(self.prices_collection)
+                price_insert_result = await self.bulk_insert(price_documents)
+                if price_insert_result:
+                    print(f"Successfully inserted {len(price_documents)} documents into {self.prices_collection}")
+                else:
+                    print(f"No result returned from bulk insert into {self.prices_collection}")
+
+            # Update DATA collection with latest prices
+            if price_updates:
+                self.mongo_helper.set_collection("coingecko_data")
+                for token_symbol, price in price_updates.items():
+                    try:
+                        update_result = await self.mongo_helper.collection.update_one(
+                            {"symbol": token_symbol},
+                            {
+                                "$set": {
+                                    "prices.binance": price,
+                                    "last_updated_binance": timestamp
+                                }
+                            }
+                        )
+                        if update_result.modified_count > 0:
+                            print(f"Updated price for {token_symbol} in DATA collection: {price}")
+                        else:
+                            print(f"No document found for {token_symbol} in DATA collection")
+                    except Exception as e:
+                        print(f"Error updating DATA collection for {token_symbol}: {e}")
+
+            # Insert big transactions 
             if big_transaction_documents:
                 big_insert_result = await self.bulk_insert_big_transactions(big_transaction_documents)
                 if big_insert_result:
@@ -269,7 +326,8 @@ class BinanceWebSocket:
             await self.process_and_store_data()
         # Add any other cleanup code here
 
-async def main(db_name, stats_collection, big_transactions_collection, pairs):
+# main.py
+async def main(db_name, stats_collection, big_transactions_collection, prices_collection, pairs):
     try:
         mongo_helper = AsyncMongoDBHelper(db_name)
 
@@ -280,7 +338,7 @@ async def main(db_name, stats_collection, big_transactions_collection, pairs):
         # Set the main collection
         mongo_helper.set_collection(stats_collection)
 
-        binance_ws = BinanceWebSocket(pairs, mongo_helper, stats_collection, big_transactions_collection)
+        binance_ws = BinanceWebSocket(pairs, mongo_helper, stats_collection, big_transactions_collection, prices_collection)
         
         print("Starting Binance WebSocket connection")
         await binance_ws.connect()
@@ -294,11 +352,12 @@ async def main(db_name, stats_collection, big_transactions_collection, pairs):
         print("Binance WebSocket connection closed")
 
 if __name__ == "__main__":
-    # You should define db_name, stats_collection, big_transactions_collection, and pairs here
-    # or pass them as command-line arguments
-    db_name = "your_db_name"
-    stats_collection = "your_stats_collection"
-    big_transactions_collection = "your_big_transactions_collection"
-    pairs = ["BTCUSDT"]  # Add more pairs as needed
+    # Configuration
+    db_name = "testing"  # Your database name
+    stats_collection = "binance_trades"  # Collection for regular trade statistics
+    big_transactions_collection = "big_transactions"  # Collection for large trades
+    prices_collection = "prices"  # New collection for price data
+    pairs = ["BTCUSDT", "ETHUSDT"]  # Add more trading pairs as needed
     
-    asyncio.run(main(db_name, stats_collection, big_transactions_collection, pairs))
+    # Run the application
+    asyncio.run(main(db_name, stats_collection, big_transactions_collection))
