@@ -82,7 +82,11 @@ class CoinGeckoDataFetcher:
             "circulating_supply": data.get('market_data', {}).get('circulating_supply'),
             "total_supply": data.get('market_data', {}).get('total_supply'),
             "max_supply": data.get('market_data', {}).get('max_supply'),
-            "last_updated_on_coingecko": data.get('last_updated'),
+            "ath": data.get('market_data', {}).get('ath', {}).get('usd'),
+            "ath_date": data.get('market_data', {}).get('ath_date', {}).get('usd'),
+            "atl": data.get('market_data', {}).get('atl', {}).get('usd'),
+            "atl_date": data.get('market_data', {}).get('atl_date', {}).get('usd'),
+            "last_updated_coingecko": data.get('last_updated'),
             "image": data.get('image', {}).get('large'),
             "timestamp": datetime.now(timezone.utc),
             "source": source,  # Add source array from target_pairs
