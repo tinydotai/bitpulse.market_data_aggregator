@@ -14,7 +14,7 @@ PRICE_GAUGE = Gauge('binance_price', 'Current price', ['symbol'])
 BIG_TRANSACTIONS = Counter('binance_big_transactions_total', 'Number of big transactions', ['symbol', 'side'])
 
 class BinanceWebSocket:
-    def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, stats_collection, big_transactions_collection, prices_collection):
+    def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, stats_collection, big_transactions_collection):
         self.pairs = pairs
         self.base_url = "wss://stream.binance.com:9443/ws"
         self.transactions = {}
@@ -28,7 +28,6 @@ class BinanceWebSocket:
         self.BIG_TRANSACTION_THRESHOLD = 10000  # $10,000 threshold for big transactions
         self.stats_collection = stats_collection
         self.big_transactions_collection = big_transactions_collection
-        self.prices_collection = prices_collection
         start_http_server(8000)  # Prometheus will scrape metrics from this port
 
     async def connect(self):
@@ -247,35 +246,6 @@ class BinanceWebSocket:
             else:
                 print("No trades to insert for this interval")
 
-            # Insert price documents
-            if price_documents:
-                self.mongo_helper.set_collection(self.prices_collection)
-                price_insert_result = await self.bulk_insert(price_documents)
-                if price_insert_result:
-                    print(f"Successfully inserted {len(price_documents)} documents into {self.prices_collection}")
-                else:
-                    print(f"No result returned from bulk insert into {self.prices_collection}")
-
-            # Update DATA collection with latest prices
-            if price_updates:
-                self.mongo_helper.set_collection("coingecko_data")
-                for token_symbol, price in price_updates.items():
-                    try:
-                        update_result = await self.mongo_helper.collection.update_one(
-                            {"symbol": token_symbol},
-                            {
-                                "$set": {
-                                    "prices.binance": price,
-                                    "last_updated_binance": timestamp
-                                }
-                            }
-                        )
-                        if update_result.modified_count > 0:
-                            print(f"Updated price for {token_symbol} in DATA collection: {price}")
-                        else:
-                            print(f"No document found for {token_symbol} in DATA collection")
-                    except Exception as e:
-                        print(f"Error updating DATA collection for {token_symbol}: {e}")
 
             # Insert big transactions 
             if big_transaction_documents:
@@ -327,7 +297,7 @@ class BinanceWebSocket:
         # Add any other cleanup code here
 
 # main.py
-async def main(db_name, stats_collection, big_transactions_collection, prices_collection, pairs):
+async def main(db_name, stats_collection, big_transactions_collection, pairs):
     try:
         mongo_helper = AsyncMongoDBHelper(db_name)
 
@@ -338,7 +308,7 @@ async def main(db_name, stats_collection, big_transactions_collection, prices_co
         # Set the main collection
         mongo_helper.set_collection(stats_collection)
 
-        binance_ws = BinanceWebSocket(pairs, mongo_helper, stats_collection, big_transactions_collection, prices_collection)
+        binance_ws = BinanceWebSocket(pairs, mongo_helper, stats_collection, big_transactions_collection)
         
         print("Starting Binance WebSocket connection")
         await binance_ws.connect()
@@ -356,7 +326,6 @@ if __name__ == "__main__":
     db_name = "testing"  # Your database name
     stats_collection = "binance_trades"  # Collection for regular trade statistics
     big_transactions_collection = "big_transactions"  # Collection for large trades
-    prices_collection = "prices"  # New collection for price data
     pairs = ["BTCUSDT", "ETHUSDT"]  # Add more trading pairs as needed
     
     # Run the application

@@ -16,7 +16,7 @@ PRICE_GAUGE = Gauge('kucoin_price', 'Current price', ['symbol'])
 BIG_TRANSACTIONS = Counter('kucoin_big_transactions_total', 'Number of big transactions', ['symbol', 'side'])
 
 class KucoinWebSocket:
-    def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, stats_collection, big_transactions_collection, prices_collection):
+    def __init__(self, pairs, mongo_helper: AsyncMongoDBHelper, stats_collection, big_transactions_collection):
         self.pairs = pairs
         self.transactions = {}
         self.big_transactions = {}
@@ -29,7 +29,6 @@ class KucoinWebSocket:
         self.BIG_TRANSACTION_THRESHOLD = 10000  # $10,000 threshold for big transactions
         self.stats_collection = stats_collection
         self.big_transactions_collection = big_transactions_collection
-        self.prices_collection = prices_collection
         start_http_server(8001)  # Prometheus will scrape metrics from this port
 
         # KuCoin client setup
@@ -259,36 +258,6 @@ class KucoinWebSocket:
                 else:
                     print("No trades to insert for this interval")
 
-                # Insert price documents
-                if price_documents:
-                    self.mongo_helper.set_collection(self.prices_collection)
-                    price_insert_result = await self.bulk_insert(price_documents)
-                    if price_insert_result:
-                        print(f"Successfully inserted {len(price_documents)} documents into {self.prices_collection}")
-                    else:
-                        print(f"No result returned from bulk insert into {self.prices_collection}")
-
-                # Update DATA collection with latest prices
-                if price_updates:
-                    self.mongo_helper.set_collection("coingecko_data")
-                    for token_symbol, price in price_updates.items():
-                        try:
-                            update_result = await self.mongo_helper.collection.update_one(
-                                {"symbol": token_symbol},
-                                {
-                                    "$set": {
-                                        "prices.kucoin": price,
-                                        "last_updated_kucoin": timestamp
-                                    }
-                                }
-                            )
-                            if update_result.modified_count > 0:
-                                print(f"Updated price for {token_symbol} in DATA collection: {price}")
-                            else:
-                                print(f"No document found for {token_symbol} in DATA collection")
-                        except Exception as e:
-                            print(f"Error updating DATA collection for {token_symbol}: {e}")
-
                 # Insert big transactions
                 if big_transaction_documents:
                     big_insert_result = await self.bulk_insert_big_transactions(big_transaction_documents)
@@ -338,7 +307,7 @@ class KucoinWebSocket:
             await self.process_and_store_data()
         # Add any other cleanup code here
 
-async def main(db_name, stats_collection, big_transactions_collection, prices_collection, pairs):
+async def main(db_name, stats_collection, big_transactions_collection, pairs):
     try:
         mongo_helper = AsyncMongoDBHelper(db_name)
 
@@ -350,7 +319,7 @@ async def main(db_name, stats_collection, big_transactions_collection, prices_co
         mongo_helper.set_collection(stats_collection)
 
         kucoin_ws = KucoinWebSocket(pairs, mongo_helper, stats_collection, 
-                                   big_transactions_collection, prices_collection)
+                                   big_transactions_collection)
         
         print("Starting KuCoin WebSocket connection")
         await kucoin_ws.connect()
@@ -368,8 +337,7 @@ if __name__ == "__main__":
     db_name = "your_db_name"
     stats_collection = "your_stats_collection"
     big_transactions_collection = "your_big_transactions_collection"
-    prices_collection = "prices"  # New collection for price data
     pairs = ["BTC-USDT", "ETH-USDT"]  # Add more pairs as needed
     
     # Run the application with all required parameters
-    asyncio.run(main(db_name, stats_collection, big_transactions_collection, prices_collection, pairs))
+    asyncio.run(main(db_name, stats_collection, big_transactions_collection, pairs))
