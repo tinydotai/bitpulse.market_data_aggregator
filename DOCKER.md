@@ -80,7 +80,7 @@ docker run --name binance-transactions -d binance-transactions python /app/src/g
 4.1 **Coingecko**
 
 ```
-docker run --name coingecko-data -d l0rtk/bitpulse_coingecko_data:1.1 python /app/src/get_coingecko_data.py db_name=bitpulse_v2 data_collection=coingecko_data
+docker run --name coingecko-data -d l0rtk/bitpulse_coingecko_data:1.2 python /app/src/get_coingecko_data.py db_name=bitpulse_v2 data_collection=coingecko_data
 ```
 
 5. **Running with Host Network** (if needed)
