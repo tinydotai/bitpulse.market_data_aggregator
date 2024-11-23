@@ -2,34 +2,33 @@ import asyncio
 import websockets
 import json
 from datetime import datetime, timezone
-import aioredis
+from redis import Redis
 
-class AsyncRedisHelper:
+class RedisHelper:
     def __init__(self, host='localhost', port=6379, db=0):
-        self.redis_url = f"redis://{host}:{port}/{db}"
-        self.redis = None
+        self.redis_client = Redis(
+            host=host,
+            port=port,
+            db=db,
+            decode_responses=True
+        )
 
-    async def connect(self):
-        self.redis = await aioredis.from_url(self.redis_url, decode_responses=True)
-        return self.redis
+    def store_trade_stats(self, key, data):
+        self.redis_client.hset(key, mapping=self._prepare_data_for_redis(data))
 
-    async def close(self):
-        if self.redis:
-            await self.redis.close()
-
-    async def store_trade_stats(self, key, data):
-        await self.redis.hset(key, mapping=self._prepare_data_for_redis(data))
-
-    async def store_big_transaction(self, transaction):
+    def store_big_transaction(self, transaction):
         # Store big transactions in a sorted set, scored by timestamp
         score = int(transaction['timestamp'].timestamp())
-        await self.redis.zadd(
+        self.redis_client.zadd(
             f"big_transactions:{transaction['symbol']}",
             {json.dumps(self._prepare_data_for_redis(transaction)): score}
         )
 
-    async def get_latest_price(self, symbol):
-        return await self.redis.get(f"price:{symbol}")
+    def get_latest_price(self, symbol):
+        return self.redis_client.get(f"price:{symbol}")
+
+    def close(self):
+        self.redis_client.close()
 
     def _prepare_data_for_redis(self, data):
         # Convert datetime objects to timestamps and ensure all values are strings
@@ -44,7 +43,7 @@ class AsyncRedisHelper:
         return prepared_data
 
 class BinanceWebSocket:
-    def __init__(self, pairs, redis_helper: AsyncRedisHelper):
+    def __init__(self, pairs, redis_helper: RedisHelper):
         self.pairs = pairs
         self.base_url = "wss://stream.binance.com:9443/ws"
         self.transactions = {}
@@ -155,7 +154,7 @@ class BinanceWebSocket:
                 })
 
                 # Store latest price in Redis
-                await self.redis_helper.redis.set(f"price:{symbol}", str(price))
+                self.redis_helper.redis_client.set(f"price:{symbol}", str(price))
 
                 # Track big transactions
                 if transaction_value >= self.BIG_TRANSACTION_THRESHOLD:
@@ -213,12 +212,12 @@ class BinanceWebSocket:
                 if has_trades:
                     # Store trade stats in Redis
                     key = f"trade_stats:{symbol}:{int(timestamp.timestamp())}"
-                    await self.redis_helper.store_trade_stats(key, output_data)
+                    self.redis_helper.store_trade_stats(key, output_data)
 
                     # Store big transactions
                     for side in ['buy', 'sell']:
                         for trade in self.big_transactions[symbol][side]:
-                            await self.redis_helper.store_big_transaction({
+                            self.redis_helper.store_big_transaction({
                                 **trade,
                                 'side': side,
                                 'symbol': symbol,
@@ -238,14 +237,11 @@ class BinanceWebSocket:
 async def main():
     try:
         # Initialize Redis helper
-        redis_helper = AsyncRedisHelper(
+        redis_helper = RedisHelper(
             host='localhost',  # Change this if Redis is on different host
             port=6379,        # Default Redis port
             db=0             # Default Redis database
         )
-        
-        # Connect to Redis
-        await redis_helper.connect()
         
         # Trading pairs to monitor
         pairs = ["BTCUSDT", "ETHUSDT"]  # Add more pairs as needed
@@ -261,7 +257,7 @@ async def main():
         if 'binance_ws' in locals():
             await binance_ws.close()
         if 'redis_helper' in locals():
-            await redis_helper.close()
+            redis_helper.close()
         print("Binance WebSocket connection closed")
 
 if __name__ == "__main__":
