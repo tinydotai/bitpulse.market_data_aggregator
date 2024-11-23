@@ -1,16 +1,8 @@
 import asyncio
 import websockets
 import json
-import os
 from datetime import datetime, timezone
 import aioredis
-from prometheus_client import start_http_server, Counter, Gauge
-
-# Prometheus metrics
-TRANSACTIONS_TOTAL = Counter('binance_transactions_total', 'Total number of transactions', ['symbol', 'side'])
-TRANSACTION_VALUE = Counter('binance_transaction_value_total', 'Total value of transactions', ['symbol', 'side'])
-PRICE_GAUGE = Gauge('binance_price', 'Current price', ['symbol'])
-BIG_TRANSACTIONS = Counter('binance_big_transactions_total', 'Number of big transactions', ['symbol', 'side'])
 
 class AsyncRedisHelper:
     def __init__(self, host='localhost', port=6379, db=0):
@@ -63,8 +55,7 @@ class BinanceWebSocket:
         self.max_retries = 10
         self.initial_retry_delay = 5
         self.max_retry_delay = 60
-        self.BIG_TRANSACTION_THRESHOLD = 10000
-        start_http_server(8000)
+        self.BIG_TRANSACTION_THRESHOLD = 10000  # $10,000 threshold
 
     async def connect(self):
         stream_names = [f"{pair.lower()}@trade" for pair in self.pairs]
@@ -163,16 +154,11 @@ class BinanceWebSocket:
                     'quoteCurrency': quote_currency
                 })
 
-                # Update Prometheus metrics
-                TRANSACTIONS_TOTAL.labels(symbol=symbol, side=trade_side).inc()
-                TRANSACTION_VALUE.labels(symbol=symbol, side=trade_side).inc(transaction_value)
-                PRICE_GAUGE.labels(symbol=symbol).set(price)
-
                 # Store latest price in Redis
                 await self.redis_helper.redis.set(f"price:{symbol}", str(price))
 
+                # Track big transactions
                 if transaction_value >= self.BIG_TRANSACTION_THRESHOLD:
-                    BIG_TRANSACTIONS.labels(symbol=symbol, side=trade_side).inc()
                     self.big_transactions[symbol][trade_side].append({
                         'price': price,
                         'quantity': quantity,
