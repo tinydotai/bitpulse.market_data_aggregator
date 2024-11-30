@@ -28,6 +28,7 @@ class BinanceWebSocket:
         self.BIG_TRANSACTION_THRESHOLD = 10000  # $10,000 threshold for big transactions
         self.stats_collection = stats_collection
         self.big_transactions_collection = big_transactions_collection
+        self.coingecko_collection = "coingecko_data"  # Collection for coingecko data
         start_http_server(8000)  # Prometheus will scrape metrics from this port
 
     async def connect(self):
@@ -161,8 +162,7 @@ class BinanceWebSocket:
 
             documents = []
             big_transaction_documents = []
-            price_documents = []
-            price_updates = {}  # Store latest prices for DATA collection
+            price_updates = {}  # Store latest prices for coingecko collection
 
             for symbol, data in self.transactions.items():
                 output_data = {
@@ -203,21 +203,9 @@ class BinanceWebSocket:
                     # Calculate weighted average price
                     weighted_avg_price = total_value / total_quantity
 
-                    # Create price document
-                    price_document = {
-                        "timestamp": timestamp,
-                        "symbol": symbol,
-                        "source": "binance",
-                        "price": weighted_avg_price,
-                        "baseCurrency": symbol[:-4],
-                        "quoteCurrency": symbol[-4:]
-                    }
-                    price_documents.append(price_document)
-
-                    # Store price for DATA collection update
+                    # Store price for coingecko collection update
                     token_symbol = symbol[:-4].lower()  # Remove USDT and convert to lowercase
-                    if token_symbol not in price_updates:
-                        price_updates[token_symbol] = weighted_avg_price
+                    price_updates[token_symbol] = weighted_avg_price
 
                 # Process big transactions 
                 big_trades = self.big_transactions[symbol]
@@ -235,6 +223,10 @@ class BinanceWebSocket:
                             "quoteCurrency": trade['quoteCurrency']
                         })
 
+            # Update coingecko collection with new prices
+            if price_updates:
+                await self.update_coingecko_data(price_updates, timestamp)
+
             # Regular data inserts
             if documents:
                 self.mongo_helper.set_collection(self.stats_collection)
@@ -245,7 +237,6 @@ class BinanceWebSocket:
                     print(f"No result returned from bulk insert into {self.stats_collection}")
             else:
                 print("No trades to insert for this interval")
-
 
             # Insert big transactions 
             if big_transaction_documents:
@@ -262,6 +253,48 @@ class BinanceWebSocket:
             print(f"Error in process_and_store_data: {e}")
         finally:
             print("-"*50)
+
+
+    async def update_coingecko_data(self, price_updates, timestamp):
+        """
+        Update the coingecko_data collection with new prices from Binance
+        """
+        try:
+            self.mongo_helper.set_collection(self.coingecko_collection)
+            
+            for token_symbol, price in price_updates.items():
+                update_query = {
+                    "symbol": token_symbol
+                }
+                
+                # Changed the update syntax to use dot notation
+                update_data = {
+                    "$set": {
+                        "calculated_stats.prices.binance": price,
+                        "calculated_stats.last_updated.binance": timestamp,
+                        # Update market average
+                        "calculated_stats.market_average": price  # This will be replaced with proper average calculation if needed
+                    }
+                }
+                
+                try:
+                    result = await self.mongo_helper.collection.update_one(
+                        update_query, 
+                        update_data
+                    )
+                    if result.modified_count > 0:
+                        print(f"Updated price for {token_symbol} in coingecko collection: {price}")
+                    else:
+                        print(f"No document found for {token_symbol} in coingecko collection")
+                except Exception as e:
+                    print(f"Error updating document for {token_symbol}: {e}")
+                    
+        except Exception as e:
+            print(f"Error updating coingecko data: {e}")
+        finally:
+            # Reset collection back to original
+            self.mongo_helper.set_collection(self.stats_collection)
+
 
     async def bulk_insert(self, documents):
         try:
@@ -296,7 +329,6 @@ class BinanceWebSocket:
             await self.process_and_store_data()
         # Add any other cleanup code here
 
-# main.py
 async def main(db_name, stats_collection, big_transactions_collection, pairs):
     try:
         mongo_helper = AsyncMongoDBHelper(db_name)
@@ -329,4 +361,4 @@ if __name__ == "__main__":
     pairs = ["BTCUSDT", "ETHUSDT"]  # Add more trading pairs as needed
     
     # Run the application
-    asyncio.run(main(db_name, stats_collection, big_transactions_collection))
+    asyncio.run(main(db_name, stats_collection, big_transactions_collection, pairs))

@@ -29,6 +29,7 @@ class KucoinWebSocket:
         self.BIG_TRANSACTION_THRESHOLD = 10000  # $10,000 threshold for big transactions
         self.stats_collection = stats_collection
         self.big_transactions_collection = big_transactions_collection
+        self.coingecko_collection = "coingecko_data"  # Added coingecko collection
         start_http_server(8001)  # Prometheus will scrape metrics from this port
 
         # KuCoin client setup
@@ -162,74 +163,61 @@ class KucoinWebSocket:
             print(f"Unexpected error in handle_message: {e}")
 
     async def process_and_store_data(self):
-            try:
-                timestamp = self.current_interval.replace(tzinfo=timezone.utc)
-                print("-"*50)
-                print(f"Processing data for interval: {timestamp}")
+        try:
+            timestamp = self.current_interval.replace(tzinfo=timezone.utc)
+            print("-"*50)
+            print(f"Processing data for interval: {timestamp}")
 
-                documents = []
-                big_transaction_documents = []
-                price_documents = []
-                price_updates = {}  # Store latest prices for DATA collection
+            documents = []
+            big_transaction_documents = []
+            price_updates = {}  # Store latest prices for coingecko collection
 
-                for symbol, data in self.transactions.items():
-                    standard_symbol = symbol.replace('-','')  # Convert BTC-USDT to BTCUSDT
-                    base_currency = cryptos_by_symbol[symbol.split('-')[0]][0]["symbol"].upper()
-                    quote_currency = cryptos_by_symbol[symbol.split('-')[1]][0]["symbol"].upper()
+            for symbol, data in self.transactions.items():
+                standard_symbol = symbol.replace('-','')  # Convert BTC-USDT to BTCUSDT
+                base_currency = cryptos_by_symbol[symbol.split('-')[0]][0]["symbol"].upper()
+                quote_currency = cryptos_by_symbol[symbol.split('-')[1]][0]["symbol"].upper()
 
-                    output_data = {
-                        "timestamp": timestamp,
-                        "symbol": standard_symbol,
-                        "source": "kucoin",
-                        "baseCurrency": base_currency,
-                        "quoteCurrency": quote_currency
-                    }
+                output_data = {
+                    "timestamp": timestamp,
+                    "symbol": standard_symbol,
+                    "source": "kucoin",
+                    "baseCurrency": base_currency,
+                    "quoteCurrency": quote_currency
+                }
 
-                    has_trades = False
-                    total_value = 0
-                    total_quantity = 0
+                has_trades = False
+                total_value = 0
+                total_quantity = 0
 
-                    for side in ['buy', 'sell']:
-                        trades = data[side]
-                        if trades:
-                            has_trades = True
-                            side_quantity = sum(trade['quantity'] for trade in trades)
-                            side_value = sum(trade['price'] * trade['quantity'] for trade in trades)
-                            total_quantity += side_quantity
-                            total_value += side_value
-                            output_data.update({
-                                f"{side}_count": len(trades),
-                                f"{side}_total_quantity": side_quantity,
-                                f"{side}_total_value": side_value,
-                                f"{side}_min_price": min(trade['price'] for trade in trades),
-                                f"{side}_max_price": max(trade['price'] for trade in trades),
-                                f"{side}_avg_price": side_value / side_quantity,
-                            })
-                            print(f"{symbol} {side}: {len(trades)} trades, total value: {side_value}")
-                        else:
-                            print(f"{symbol} {side}: No trades")
+                for side in ['buy', 'sell']:
+                    trades = data[side]
+                    if trades:
+                        has_trades = True
+                        side_quantity = sum(trade['quantity'] for trade in trades)
+                        side_value = sum(trade['price'] * trade['quantity'] for trade in trades)
+                        total_quantity += side_quantity
+                        total_value += side_value
+                        output_data.update({
+                            f"{side}_count": len(trades),
+                            f"{side}_total_quantity": side_quantity,
+                            f"{side}_total_value": side_value,
+                            f"{side}_min_price": min(trade['price'] for trade in trades),
+                            f"{side}_max_price": max(trade['price'] for trade in trades),
+                            f"{side}_avg_price": side_value / side_quantity,
+                        })
+                        print(f"{symbol} {side}: {len(trades)} trades, total value: {side_value}")
+                    else:
+                        print(f"{symbol} {side}: No trades")
 
-                    if has_trades:
-                        documents.append(output_data)
+                if has_trades:
+                    documents.append(output_data)
 
-                        # Calculate weighted average price
-                        weighted_avg_price = total_value / total_quantity
+                    # Calculate weighted average price
+                    weighted_avg_price = total_value / total_quantity
 
-                        # Create price document
-                        price_document = {
-                            "timestamp": timestamp,
-                            "symbol": standard_symbol,
-                            "source": "kucoin",
-                            "price": weighted_avg_price,
-                            "baseCurrency": base_currency,
-                            "quoteCurrency": quote_currency
-                        }
-                        price_documents.append(price_document)
-
-                        # Store price for DATA collection update
-                        token_symbol = base_currency.lower()  # Convert to lowercase for DATA collection
-                        if token_symbol not in price_updates:
-                            price_updates[token_symbol] = weighted_avg_price
+                    # Store price for coingecko collection update
+                    token_symbol = base_currency.lower()  # Convert to lowercase for coingecko collection
+                    price_updates[token_symbol] = weighted_avg_price
 
                     # Process big transactions
                     big_trades = self.big_transactions[symbol]
@@ -247,32 +235,73 @@ class KucoinWebSocket:
                                 "quoteCurrency": quote_currency
                             })
 
-                # Insert regular transactions
-                if documents:
-                    self.mongo_helper.set_collection(self.stats_collection)
-                    regular_insert_result = await self.bulk_insert(documents)
-                    if regular_insert_result:
-                        print(f"Successfully inserted {len(documents)} documents into {self.stats_collection}")
-                    else:
-                        print(f"No result returned from bulk insert into {self.stats_collection}")
-                else:
-                    print("No trades to insert for this interval")
+            # Update coingecko collection with new prices
+            if price_updates:
+                await self.update_coingecko_data(price_updates, timestamp)
 
-                # Insert big transactions
-                if big_transaction_documents:
-                    big_insert_result = await self.bulk_insert_big_transactions(big_transaction_documents)
-                    if big_insert_result:
-                        print(f"Successfully inserted {len(big_transaction_documents)} big transaction documents into {self.big_transactions_collection}")
-                    else:
-                        print(f"No result returned from bulk insert into {self.big_transactions_collection}")
+            # Regular data inserts
+            if documents:
+                self.mongo_helper.set_collection(self.stats_collection)
+                regular_insert_result = await self.bulk_insert(documents)
+                if regular_insert_result:
+                    print(f"Successfully inserted {len(documents)} documents into {self.stats_collection}")
                 else:
-                    print("No big transactions to insert")
+                    print(f"No result returned from bulk insert into {self.stats_collection}")
+            else:
+                print("No trades to insert for this interval")
 
-                print("Data processing and storage completed successfully")
-            except Exception as e:
-                print(f"Error in process_and_store_data: {e}")
-            finally:
-                print("-"*50)
+            # Insert big transactions
+            if big_transaction_documents:
+                big_insert_result = await self.bulk_insert_big_transactions(big_transaction_documents)
+                if big_insert_result:
+                    print(f"Successfully inserted {len(big_transaction_documents)} big transaction documents into {self.big_transactions_collection}")
+                else:
+                    print(f"No result returned from bulk insert into {self.big_transactions_collection}")
+            else:
+                print("No big transactions to insert")
+
+            print("Data processing and storage completed successfully")
+        except Exception as e:
+            print(f"Error in process_and_store_data: {e}")
+        finally:
+            print("-"*50)
+
+    async def update_coingecko_data(self, price_updates, timestamp):
+        """
+        Update the coingecko_data collection with new prices from KuCoin
+        """
+        try:
+            self.mongo_helper.set_collection(self.coingecko_collection)
+            
+            for token_symbol, price in price_updates.items():
+                update_query = {
+                    "symbol": token_symbol
+                }
+                
+                update_data = {
+                    "$set": {
+                        "calculated_stats.prices.kucoin": price,
+                        "calculated_stats.last_updated.kucoin": timestamp
+                    }
+                }
+                
+                try:
+                    result = await self.mongo_helper.collection.update_one(
+                        update_query, 
+                        update_data
+                    )
+                    if result.modified_count > 0:
+                        print(f"Updated price for {token_symbol} in coingecko collection: {price}")
+                    else:
+                        print(f"No document found for {token_symbol} in coingecko collection")
+                except Exception as e:
+                    print(f"Error updating document for {token_symbol}: {e}")
+                    
+        except Exception as e:
+            print(f"Error updating coingecko data: {e}")
+        finally:
+            # Reset collection back to original
+            self.mongo_helper.set_collection(self.stats_collection)
 
     async def bulk_insert(self, documents):
         try:
